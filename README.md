@@ -30,4 +30,4 @@ This repository contains sample script to take Inventory information from a Rack
 
 
 *Detailed Instructions:*
-[Migrating RackTables data to Device42]
+[Migrating RackTables data to Device42](http://blog.device42.com/2014/05/migrating-racktables-data-to-device42/)
