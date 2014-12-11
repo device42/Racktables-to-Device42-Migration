@@ -12,14 +12,13 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 #############################################################################################################
-# v1.0.0 of python script that connects to RackTables DB and migrates data to Device42 appliance using APIs
+# v1.0.1 of python script that connects to RackTables DB and migrates data to Device42 appliance using APIs
 # Refer to README for further instructions
 #############################################################################################################
 
 
 import sys
 import pymysql as sql
-import ipaddress
 import codecs
 import requests
 import base64 
@@ -32,15 +31,15 @@ import json
 
 # ====== MySQL Source (Racktables) ====== #
 DB_IP       = 'RT_IP'
-DB_NAME  = 'racktables'
-DB_USER   = 'RT_USER'
-DB_PWD    = 'RT_PWD'
-# ====== Log settings  ==================== #
-LOGFILE    = 'migration.log'
-STDOUT    = 'True'
+DB_NAME     = 'racktables'
+DB_USER     = 'RT_USER'
+DB_PWD      = 'RT_PWD'
+# ====== Log settings ==================== #
+LOGFILE     = 'migration.log'
+STDOUT      = 'True'
 # ====== Device42 upload settings ========= #
-D42_USER   = 'D42_USER'
-D42_PWD    = 'D42_PASSWORD'
+D42_USER    = 'D42_USER'
+D42_PWD     = 'D42_PASSWORD'
 D42_URL     = 'D42_API_URL'
 DRY_RUN     = False
 
@@ -208,7 +207,7 @@ class DB():
 
         
     def convert_ip(self, raw_ip):
-        ip = str(ipaddress.ip_address(raw_ip))
+        ip = socket.inet_ntoa(struct.pack('!I', raw_ip))
         return ip
         
         
