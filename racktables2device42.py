@@ -12,7 +12,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 #############################################################################################################
-# v1.0.1 of python script that connects to RackTables DB and migrates data to Device42 appliance using APIs
+# v2 of python script that connects to RackTables DB and migrates data to Device42 appliance using APIs
 # Refer to README for further instructions
 #############################################################################################################
 
@@ -27,20 +27,24 @@ import socket
 import re
 import json
 
+try:
+    requests.packages.urllib3.disable_warnings() 
+except:
+    pass
 
 
 # ====== MySQL Source (Racktables) ====== #
-DB_IP       = 'RT_IP'
-DB_NAME     = 'racktables'
-DB_USER     = 'RT_USER'
-DB_PWD      = 'RT_PWD'
+DB_IP       = '192.168.3.20'
+DB_NAME     = 'racktables_db'
+DB_USER     = 'root'
+DB_PWD      = 'P@ssw0rd'
 # ====== Log settings ==================== #
 LOGFILE     = 'migration.log'
 STDOUT      = 'True'
 # ====== Device42 upload settings ========= #
-D42_USER    = 'D42_USER'
-D42_PWD     = 'D42_PASSWORD'
-D42_URL     = 'D42_API_URL'
+D42_USER    = 'admin'
+D42_PWD     = 'adm!nd42'
+D42_URL     = 'https://192.168.3.30'
 DRY_RUN     = False
 
 
@@ -180,6 +184,22 @@ class REST():
             logger.writer(msg)
             data = self.fetcher(url)
             return data
+            
+    def get_customers(self):
+        if DRY_RUN == False:
+            url = self.base_url+'/api/1.0/customers/'
+            msg =  '\r\nFetching customers from %s ' % url
+            logger.writer(msg)
+            data = self.fetcher(url)
+            return data
+            
+    def post_customer(self, data):
+        if DRY_RUN == False:
+            url = self.base_url+'/api/1.0/customers/'
+            msg =  '\r\nAdding customer data to %s ' % url
+            logger.writer(msg)
+            self.uploader(data, url)
+        
 
     def post_hardware(self, data):
         if DRY_RUN == False:
@@ -258,6 +278,14 @@ class DB():
             rest.post_subnet(subs)
 
 
+    def get_customers(self):
+        self.customers = rest.get_customers()
+
+    def add_customer(self, data):
+        raw = data.replace('\n', ' ').split()
+        customer = ' '.join(raw)
+        rest.post_customer({'name':customer})
+        
     def get_devices(self):
         if not self.con:
             self.connect()
@@ -268,80 +296,120 @@ class DB():
             cur.execute(q)
             idsx = cur.fetchall()
         ids = [x[0] for x in idsx]
-        
+
         with self.con:
             for id in ids:
                 q = """SELECT 
-                        Object.name as Description, Object.label as Name, Object.asset_no as Asset, Attribute.name,Dictionary.dict_value as Type
+                            Object.name as Description, 
+                            Object.label as Name, 
+                            Object.asset_no as Asset, 
+                            Attribute.name,Dictionary.dict_value as Type,
+                            Object.comment as Comment
                         FROM Object
                         LEFT JOIN AttributeValue ON Object.id = AttributeValue.object_id 
                         LEFT JOIN Attribute ON AttributeValue.attr_id = Attribute.id
                         LEFT JOIN Dictionary ON Dictionary.dict_key = AttributeValue.uint_value
-                        WHERE Object.id = %s AND Object.objtype_id != 2""" % id
+                        WHERE Object.id = %s AND Object.objtype_id not in (2,1560,1561,1562)""" % id
                         
-            
                 cur.execute(q)
                 data = cur.fetchall()
                 self.process_data(data, id)
-    
-    
-    def process_data(self, data, id):
-        for raw in data:
-            deviceData = {}
-            device2rack = {}
-            raw = ['' if not x else x for x in raw]
-            notes, name,  asset, type, ver = raw
-            if '[[' in ver:
-                ver = ver[2:-2]
-            if "|" in ver:
-                ver = ver.split('|')[0]
-            if name: # we are not migrating devices without name
-                if type.lower() == 'hw type':
-                    if '%GPASS%' in ver:
-                        manufacturer, hardware =  ver.split("%GPASS%")
-                    elif len(ver.split()) > 1:
-                        venmod =  ver.split()
-                        manufacturer = venmod[0]
-                        hardware = ' '.join(venmod[1:])
-                    else:
-                        manufacturer = ver
-                        hardware = ver
-                        
-                    deviceData.update({'name':name})
-                    deviceData.update({'asset_no':asset})
-                    deviceData.update({'hardware':hardware})
-                    deviceData.update({'hw_size':3})
-                    deviceData.update({'manufacturer':manufacturer})
-                    deviceData.update({'notes':notes})
-                    # add device to rack:
-                    lname = self.get_local_rack_name(id)
-                    rack_id = self.rack_map.get(lname)
-                    try:
-                        floor,  height,  depth,  mount = self.get_hardware_size(id)
-                    except:
-                        print 'EXCEPTION: ', id
-                    if rack_id:
-                        device2rack.update({'device':name})
-                        device2rack.update({'rack_id':rack_id})
-                        device2rack.update({'start_at':floor})
 
-                elif type.lower() == 'sw type':
-                    try:
-                        os, version = ver.split('%GSKIP%')
-                        ver = os
-                    except:
-                        ver = ver.replace('%GSKIP%', ' ')
-                        version = ''
-                    deviceData.update({'name':name})
-                    deviceData.update({'asset_no':asset})
-                    deviceData.update({'os':ver})
-                    deviceData.update({'osver':version})
-                    deviceData.update({'notes':notes})
-                if deviceData:
-                    rest.post_device(deviceData)
-                if device2rack:
-                    rest.post_device2rack(device2rack)
-                            
+ 
+    def process_data(self, data, id):
+        deviceData  = {}
+        device2rack = {}
+        name        = None
+        label       = None
+        os          = None
+        hardware    = None
+        note        = None
+        customer    = None
+    
+ 
+        for x in data:
+            name    = x[0]
+            label   = x[2]
+            note    = x[-1]
+            if 'Operating System' in x:
+                os  = x[-2]
+                if '%GSKIP%' in os:
+                    os = os.replace('%GSKIP%', ' ')
+                if '%GPASS%' in os:
+                    os = os.replace('%GPASS%', ' ')
+            if 'SW type' in x:
+                os  = x[-2]
+                if '%GSKIP%' in os:
+                    os = os.replace('%GSKIP%', ' ')
+                if '%GPASS%' in os:
+                    os = os.replace('%GPASS%', ' ')
+            
+            if 'Server Hardware' in x:
+                hardware = x[-2]
+                if '%GSKIP%' in hardware:
+                    hardware = hardware.replace('%GSKIP%', ' ')
+                if '%GPASS%' in hardware:
+                    hardware = hardware.replace('%GPASS%', ' ')
+                if '\t' in hardware:
+                    hardware = hardware.replace('\t', ' ')
+                    
+            if 'HW type' in x:
+                hardware = x[-2]
+                if '%GSKIP%' in hardware:
+                    hardware = hardware.replace('%GSKIP%', ' ')
+                if '%GPASS%' in hardware:
+                    hardware = hardware.replace('%GPASS%', ' ')
+                if '\t' in hardware:
+                    hardware = hardware.replace('\t', ' ')
+            if 'Customer' in x:
+                customer = x[-1]
+            if note != None:
+                note = note.replace('\n', ' ')
+                if '&lt;' in note:
+                    note = note.replace('&lt;', '')
+                if '&gt;' in note:
+                    note = note.replace('&gt;', '')
+        if name != None: #and hardware != None:
+            # set device data
+            deviceData.update({'name':name})
+            deviceData.update({'hw_size':3})
+            if hardware:
+                deviceData.update({'hardware':hardware})
+            if os:
+                deviceData.update({'os':os})
+            if note:
+                deviceData.update({'notes':note})
+                
+            """
+            if customer: # Clean RT data needed for this!
+                if customer not in self.customers:
+                    self.add_customer(customer) 
+                deviceData.update({'customer':customer})
+            """
+            
+            # add device to rack:
+            lname = self.get_local_rack_name(id)
+            if lname:
+                rack_id = self.rack_map.get(lname)
+                try:
+                    floor,  height,  depth,  mount = self.get_hardware_size(id)
+                    print '>> TRY ', height, depth, hardware
+                    self.add_hardware(height, depth, hardware)
+                except Exception, e:
+                    print 'EXCEPTION: ', id, e
+                if rack_id:
+                    device2rack.update({'device':name})
+                    device2rack.update({'rack_id':rack_id})
+                    device2rack.update({'start_at':floor})
+            
+            if deviceData:
+                rest.post_device(deviceData)
+            if device2rack:
+                rest.post_device2rack(device2rack)
+            
+            
+    
+    
     def get_locations(self):
         if not self.con:
             self.connect()
@@ -425,8 +493,12 @@ class DB():
             pduData = {}
             line = ['' if not x else x for x in line]
             id, name, description, asset, comment, venmodurl, position, rack_name = line
-            venmod, url = venmodurl[2:-2].split('|')
-            vendor, model =  venmod.split("%GPASS%")
+            try:
+                venmod, url = venmodurl[2:-2].split('|')
+                vendor, model =  venmod.split("%GPASS%")
+            except:
+                pass
+                
             rack_id, rack_name = self.get_rack_id(id)
             pduData.update({'name':name})
             pduData.update({'notes':comment})
@@ -468,8 +540,11 @@ class DB():
                 """ % objectid
             cur.execute(q)
         data = cur.fetchone()
-        rack_name = data[0]
-        return rack_name
+        if data: 
+            rack_name = data[0]
+            return rack_name
+        else:
+            return None
         
             
     def get_rack_id(self, objectid):
@@ -619,12 +694,21 @@ class DB():
             else:
                 return None, None, None, None
 
-
+    def add_hardware(self, height, depth, name):
+        hwdData = {}
+        hwdData.update({'type':1})
+        hwdData.update({'name':name})
+        if height:
+            hwdData.update({'size':height})
+        if depth:
+            hwdData.update({'depth':depth})
+        rest.post_hardware(hwdData)
 
 def main():
     db = DB()
-    db.get_subnets()
-    db.get_ips()
+    #db.get_subnets()
+    #db.get_ips()
+    #db.get_customers()
     db.get_locations() # also creates ROOMS !!!
     db.get_racks()
     db.get_rack_data()
