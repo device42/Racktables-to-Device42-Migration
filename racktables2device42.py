@@ -12,7 +12,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 #############################################################################################################
-# v2 of python script that connects to RackTables DB and migrates data to Device42 appliance using APIs
+# v3 of python script that connects to RackTables DB and migrates data to Device42 appliance using APIs
 # Refer to README for further instructions
 #############################################################################################################
 
@@ -24,8 +24,10 @@ import requests
 import base64 
 import struct
 import socket
+import time
 import re
 import json
+
 
 try:
     requests.packages.urllib3.disable_warnings() 
@@ -34,19 +36,18 @@ except:
 
 
 # ====== MySQL Source (Racktables) ====== #
-DB_IP       = '192.168.3.20'
-DB_NAME     = 'racktables_db'
-DB_USER     = 'root'
-DB_PWD      = 'P@ssw0rd'
+DB_IP       = ''
+DB_NAME     = ''
+DB_USER     = ''
+DB_PWD      = ''
 # ====== Log settings ==================== #
 LOGFILE     = 'migration.log'
 STDOUT      = 'True'
 # ====== Device42 upload settings ========= #
 D42_USER    = 'admin'
 D42_PWD     = 'adm!nd42'
-D42_URL     = 'https://192.168.3.30'
+D42_URL     = 'https://'
 DRY_RUN     = False
-
 
 
 class Logger():
@@ -63,6 +64,7 @@ class Logger():
                 print msg
             except:
                 print msg.encode('ascii', 'ignore') + ' # < non-ASCII chars detected! >'
+
 
 class REST():
     def __init__(self):
@@ -84,6 +86,7 @@ class REST():
         logger.writer(msg)
         msg = str(r.text)
         logger.writer(msg)
+
 
     def fetcher(self, url):
         headers = {
@@ -139,6 +142,7 @@ class REST():
             msg =  '\r\nPosting rack data to %s ' % url
             logger.writer(msg)
             self.uploader(data, url)
+ 
     
     def post_pdu(self, data):
         if DRY_RUN == False:
@@ -151,6 +155,14 @@ class REST():
         if DRY_RUN == False:
             url = self.base_url+'/api/1.0/pdus/rack/'
             msg =  '\r\nUpdating PDU data to %s ' % url
+            logger.writer(msg)
+            self.uploader(data, url)
+            
+            
+    def post_building(self, data):
+        if DRY_RUN == False:
+            url = self.base_url+'/api/1.0/buildings/'
+            msg =  '\r\nUploading building data to %s ' % url
             logger.writer(msg)
             self.uploader(data, url)
             
@@ -192,7 +204,26 @@ class REST():
             logger.writer(msg)
             data = self.fetcher(url)
             return data
+
+
+    def get_buildings(self):
+        if DRY_RUN == False:
+            url = self.base_url+'/api/1.0/buildings/'
+            msg =  '\r\nFetching buildings from %s ' % url
+            logger.writer(msg)
+            data = self.fetcher(url)
+            return data
             
+
+    def get_rooms(self):
+        if DRY_RUN == False:
+            url = self.base_url+'/api/1.0/rooms/'
+            msg =  '\r\nFetching rooms from %s ' % url
+            logger.writer(msg)
+            data = self.fetcher(url)
+            return data
+
+
     def post_customer(self, data):
         if DRY_RUN == False:
             url = self.base_url+'/api/1.0/customers/'
@@ -214,13 +245,16 @@ class REST():
             msg =  '\r\nAdding device to rack at %s ' % url
             logger.writer(msg)
             self.uploader(data, url)
+            
+
     
         
 class DB():
     def __init__(self):
         self.con = None
         self.tables = []
-        self.rack_map = {}
+        self.rack_map = []
+        self.building_room_map = {}
         
     def connect(self):
         self.con = sql.connect(host=DB_IP,  port=3306,  db=DB_NAME, user=DB_USER, passwd=DB_PWD)
@@ -232,18 +266,19 @@ class DB():
         
         
     def get_ips(self):
-        net = {}
+        
         adrese = []
         if not self.con:
             self.connect()
         with self.con:
             cur = self.con.cursor()
-            q = "SELECT * FROM IPv4Address" 
-            
+            #q = "SELECT * FROM IPv4Address" 
+            q = 'SELECT * FROM IPv4Address WHERE IPv4Address.name != ""'
             cur.execute(q)
             ips = cur.fetchall()
         
         for line in ips:
+            net = {}
             ip_raw, name, comment, reserved = line
             ip = self.convert_ip(ip_raw)
             adrese.append(ip)
@@ -256,9 +291,6 @@ class DB():
             msg =  'Label: %s' % name
             logger.writer(msg)
             rest.post_ip(net)
-            
-        return adrese
-
 
     def get_subnets(self):
         subs = {}
@@ -281,11 +313,13 @@ class DB():
     def get_customers(self):
         self.customers = rest.get_customers()
 
+
     def add_customer(self, data):
         raw = data.replace('\n', ' ').split()
         customer = ' '.join(raw)
         rest.post_customer({'name':customer})
-        
+
+
     def get_devices(self):
         if not self.con:
             self.connect()
@@ -299,21 +333,34 @@ class DB():
 
         with self.con:
             for id in ids:
-                q = """SELECT 
+                q = """Select
+                            Object.objtype_id,
                             Object.name as Description, 
                             Object.label as Name, 
                             Object.asset_no as Asset, 
-                            Attribute.name,Dictionary.dict_value as Type,
-                            Object.comment as Comment
-                        FROM Object
-                        LEFT JOIN AttributeValue ON Object.id = AttributeValue.object_id 
-                        LEFT JOIN Attribute ON AttributeValue.attr_id = Attribute.id
-                        LEFT JOIN Dictionary ON Dictionary.dict_key = AttributeValue.uint_value
-                        WHERE Object.id = %s AND Object.objtype_id not in (2,1560,1561,1562)""" % id
+                            Attribute.name as Name,Dictionary.dict_value as Type,
+                            Object.comment as Comment,
+                            RackSpace.rack_id as RackID,
+                            Rack.name as rack_name,
+                            Rack.row_name,
+                            Rack.location_id,
+                            Rack.location_name,
+                            Location.parent_name
+
+                            FROM Object
+                            LEFT JOIN AttributeValue ON Object.id = AttributeValue.object_id 
+                            LEFT JOIN Attribute ON AttributeValue.attr_id = Attribute.id
+                            LEFT JOIN Dictionary ON Dictionary.dict_key = AttributeValue.uint_value
+                            LEFT JOIN RackSpace ON Object.id = RackSpace.object_id
+                            LEFT JOIN Rack ON RackSpace.rack_id = Rack.id
+                            LEFT JOIN Location ON Rack.location_id = Location.id
+                            WHERE Object.id = %s
+                            AND Object.objtype_id not in (2,1560,1561,1562)""" % id
                         
                 cur.execute(q)
                 data = cur.fetchall()
                 self.process_data(data, id)
+
 
  
     def process_data(self, data, id):
@@ -328,24 +375,29 @@ class DB():
     
  
         for x in data:
-            name    = x[0]
-            label   = x[2]
-            note    = x[-1]
+            type,  rdesc, rname,  rasset, rattr_name,  rtype, \
+            rcomment, rrack_id, rrack_name, rrow_name, \
+            rlocation_id, rlocation_name,  rparent_name = x
+            
+            name    = x[1]
+            label   = x[3]
+            note    = x[-7]
+  
             if 'Operating System' in x:
-                os  = x[-2]
+                os  = x[-8]
                 if '%GSKIP%' in os:
                     os = os.replace('%GSKIP%', ' ')
                 if '%GPASS%' in os:
                     os = os.replace('%GPASS%', ' ')
             if 'SW type' in x:
-                os  = x[-2]
+                os  = x[-8]
                 if '%GSKIP%' in os:
                     os = os.replace('%GSKIP%', ' ')
                 if '%GPASS%' in os:
                     os = os.replace('%GPASS%', ' ')
             
             if 'Server Hardware' in x:
-                hardware = x[-2]
+                hardware = x[-8]
                 if '%GSKIP%' in hardware:
                     hardware = hardware.replace('%GSKIP%', ' ')
                 if '%GPASS%' in hardware:
@@ -354,7 +406,7 @@ class DB():
                     hardware = hardware.replace('\t', ' ')
                     
             if 'HW type' in x:
-                hardware = x[-2]
+                hardware = x[-8]
                 if '%GSKIP%' in hardware:
                     hardware = hardware.replace('%GSKIP%', ' ')
                 if '%GPASS%' in hardware:
@@ -362,14 +414,15 @@ class DB():
                 if '\t' in hardware:
                     hardware = hardware.replace('\t', ' ')
             if 'Customer' in x:
-                customer = x[-1]
+                customer = x[-8]
             if note != None:
                 note = note.replace('\n', ' ')
                 if '&lt;' in note:
                     note = note.replace('&lt;', '')
                 if '&gt;' in note:
                     note = note.replace('&gt;', '')
-        if name != None: #and hardware != None:
+            
+        if name != None: 
             # set device data
             deviceData.update({'name':name})
             deviceData.update({'hw_size':3})
@@ -379,37 +432,47 @@ class DB():
                 deviceData.update({'os':os})
             if note:
                 deviceData.update({'notes':note})
-                
-            """
-            if customer: # Clean RT data needed for this!
-                if customer not in self.customers:
-                    self.add_customer(customer) 
-                deviceData.update({'customer':customer})
-            """
-            
-            # add device to rack:
-            lname = self.get_local_rack_name(id)
-            if lname:
-                rack_id = self.rack_map.get(lname)
-                try:
-                    floor,  height,  depth,  mount = self.get_hardware_size(id)
-                    print '>> TRY ', height, depth, hardware
-                    self.add_hardware(height, depth, hardware)
-                except Exception, e:
-                    print 'EXCEPTION: ', id, e
-                if rack_id:
-                    device2rack.update({'device':name})
-                    device2rack.update({'rack_id':rack_id})
-                    device2rack.update({'start_at':floor})
-            
+            if type == 8:
+                deviceData.update({'is_it_switch':'yes'})
+
+            # upload device
             if deviceData:
                 rest.post_device(deviceData)
+        
+            
+            # add device to rack:        
+            rack_id = None
+            if not rparent_name:
+                rparent_name = ''
+            if not rlocation_name:
+                rlocation_name = ''
+            if not rrow_name:
+                rrow_name = ''
+            if not rrack_name:
+                rrack_name = ''
+            
+            rack_string = rparent_name +'::'+ rlocation_name +'::'+ rrow_name +'::'+ rrack_name
+            for r in self.rack_map:
+                if r.startswith(rack_string):
+                    rack_id = r.split('::')[-1]
+            
+           
+            floor,  height,  depth,  mount = self.get_hardware_size(id)
+            self.add_hardware(height, depth, hardware)
+
+            if rack_id:
+                device2rack.update({'device':name})
+                if hardware:
+                    device2rack.update({'hw_model':hardware})
+                device2rack.update({'rack_id':rack_id})
+                device2rack.update({'start_at':floor})
+            
             if device2rack:
                 rest.post_device2rack(device2rack)
-            
-            
-    
-    
+
+        
+                
+
     def get_locations(self):
         if not self.con:
             self.connect()
@@ -436,41 +499,115 @@ class DB():
             roomData.update({'building':name})
             rest.post_room(roomData)
                 
-                
-                
-    def get_racks(self):
+
+    def get_buildings(self):
         if not self.con:
             self.connect()
         with self.con:
             cur = self.con.cursor()
             q = """select 
-                    `O`.`name` AS `name`,`O`.`comment` AS `comment`,`AV_H`.`uint_value` AS `height`,`R`.`name` AS `row_name`,`L`.`name` AS `location_name` 
-                    from (((((((`Object` `O` 
-                    left join `AttributeValue` `AV_H` on(((`O`.`id` = `AV_H`.`object_id`) and (`AV_H`.`attr_id` = 27)))) 
-                    left join `AttributeValue` `AV_S` on(((`O`.`id` = `AV_S`.`object_id`) and (`AV_S`.`attr_id` = 29)))) 
-                    left join `RackThumbnail` `RT` on((`O`.`id` = `RT`.`rack_id`))) 
-                    left join `EntityLink` `RL` on(((`O`.`id` = `RL`.`child_entity_id`) and (`RL`.`parent_entity_type` = 'row') and (`RL`.`child_entity_type` = 'rack')))) 
-                    join `Object` `R` on((`R`.`id` = `RL`.`parent_entity_id`))) 
-                    left join `EntityLink` `LL` on(((`R`.`id` = `LL`.`child_entity_id`) and (`LL`.`parent_entity_type` = 'location') and (`LL`.`child_entity_type` = 'row')))) 
-                    left join `Object` `L` on((`L`.`id` = `LL`.`parent_entity_id`))) where (`O`.`objtype_id` = 1560)
-                """
+                    `O`.`id` AS `id`,
+                    `O`.`name` AS `name`,
+                    `O`.`comment` AS `comment`,
+                    `P`.`id` AS `parent_id`,
+                    `P`.`name` AS `parent_name` 
+                    from (`Object` `O` left join (`Object` `P` join `EntityLink` `EL` 
+                    on(((`EL`.`parent_entity_id` = `P`.`id`) 
+                    and (`P`.`objtype_id` = 1562) 
+                    and (`EL`.`parent_entity_type` = 'location') 
+                    and (`EL`.`child_entity_type` = 'location')))) on((`EL`.`child_entity_id` = `O`.`id`))) 
+                    where (`O`.`objtype_id` = 1562) and `P`.`id` is  NULL  ;
+                    """
             cur.execute(q)
         data = cur.fetchall()
-        for line in data:
-            rackData = {}
-            line = ['' if not x else x for x in line]
-            name, notes, size, row, building = line
-            rackData.update({'name':name})
-            rackData.update({'notes':notes})
-            rackData.update({'size':size})
-            rackData.update({'row':row})
-            rackData.update({'building':building})
-            # room name is generated based on building name.
-            # Plese take a look at the get_locations() for more details
-            room_name = building + '_room'
-            rackData.update({'room':room_name})
-            rest.post_rack(rackData)
+        
+        for row in data:
+            building={}
+            id, name, comment, parent_id, parent_name = row
+            building.update({'name':name})
+            if comment:
+                notes = comment.replace('\n', ' ')
+                building.update({'notes':notes})
+            rest.post_building(building)
+            
+            
+    def get_rooms(self):
+        buildings = json.loads((rest.get_buildings()))['buildings']
+        if not self.con:
+            self.connect()
+        with self.con:
+            cur = self.con.cursor()
+            q = """select 
+                    `O`.`id` AS `id`,
+                    `O`.`name` AS `name`,
+                    `O`.`comment` AS `comment`,
+                    `P`.`id` AS `parent_id`,
+                    `P`.`name` AS `parent_name` 
+                    from (`Object` `O` left join (`Object` `P` join `EntityLink` `EL` 
+                    on(((`EL`.`parent_entity_id` = `P`.`id`) 
+                    and (`P`.`objtype_id` = 1562) 
+                    and (`EL`.`parent_entity_type` = 'location') 
+                    and (`EL`.`child_entity_type` = 'location')))) on((`EL`.`child_entity_id` = `O`.`id`))) 
+                    where (`O`.`objtype_id` = 1562) and `P`.`id` is  not NULL  ;
+                    """
+            cur.execute(q)
+        data = cur.fetchall()
+        for row in data:
+            room = {}
+            id, name, comment, parent_id, parent_name = row
+            self.building_room_map.update({id:parent_name})
+            for building in buildings:
+                if building['name'] == parent_name:
+                    building_id = building['building_id']
+                    room.update({'name':name})
+                    room.update({'building_id':building_id})
+                    rest.post_room(room)
     
+    
+    def get_racks(self):
+        rack_ids = []
+        racks = json.loads(rest.get_racks())['racks']
+        for rack in racks:
+            rack_ids.append(int(rack['rack_id']))
+        
+        if not self.con:
+            self.connect()
+        with self.con:
+            cur = self.con.cursor()
+            q = """select 
+                `O`.`name` AS `name`,`O`.`comment` AS `comment`,
+                `AV_H`.`uint_value` AS `height`,`R`.`name` AS `row_name`,
+                `L`.`id` AS `location_id`,`L`.`name` AS `location_name` 
+                from (((((((`Object` `O` left join `AttributeValue` `AV_H` on(((`O`.`id` = `AV_H`.`object_id`) and (`AV_H`.`attr_id` = 27)))) 
+                left join `AttributeValue` `AV_S` on(((`O`.`id` = `AV_S`.`object_id`) and (`AV_S`.`attr_id` = 29)))) 
+                left join `RackThumbnail` `RT` on((`O`.`id` = `RT`.`rack_id`))) 
+                left join `EntityLink` `RL` on(((`O`.`id` = `RL`.`child_entity_id`) and (`RL`.`parent_entity_type` = 'row') 
+                and (`RL`.`child_entity_type` = 'rack')))) join `Object` `R` on((`R`.`id` = `RL`.`parent_entity_id`))) 
+                left join `EntityLink` `LL` on(((`R`.`id` = `LL`.`child_entity_id`) and (`LL`.`parent_entity_type` = 'location') 
+                and (`LL`.`child_entity_type` = 'row')))) left join `Object` `L` on((`L`.`id` = `LL`.`parent_entity_id`))) 
+                where (`O`.`objtype_id` = 1560) 
+                """
+            cur.execute(q)
+        rack_data = cur.fetchall()
+
+        for line in rack_data:
+            rack = {}
+            rack_name, comment, height, row_name,  room_id,  room_name = line
+            building_name = self.building_room_map[room_id]
+            if comment:
+                notes = comment.replace('\n', ' ')
+                notes = notes.replace('\t', ' ')
+                rack.update({'notes':notes})
+            rack.update({'name':rack_name})
+            rack.update({'size':height})
+            rack.update({'room':room_name})
+            rack.update({'building':building_name})
+            #rack.update({'first_number':1})
+            rack.update({'row':row_name})
+            
+            rest.post_rack(rack)
+  
+
     def get_pdus(self):
         if not self.con:
             self.connect()
@@ -583,18 +720,44 @@ class DB():
         (i.e. patch_panel_id, mac_id, device_id, device
         """
 
-    def get_device_data(self):
-        rest.get_devices()
-        
-    def get_rack_data(self):
+
+
+    def create_rack_map(self):
         raw = rest.get_racks()
         racks = json.loads(raw)
-        for i in range(0, len(racks['racks'])):
-            rname =  racks['racks'][i]['name']
-            rack_id = racks['racks'][i]['rack_id']
-            self.rack_map.update({rname:rack_id})
+        for rack in racks['racks']:
+            building = rack['building']
+            room     = rack['room']
+            row      = rack['row']
+            name     = rack['name']
+            rack_id  = rack['rack_id']
+            rack_string = building +'::'+ room +'::'+ row +'::'+ name +'::'+ str(rack_id)
+            self.rack_map.append(rack_string)
+
         
-    
+    def get_device_to_ip(self):
+        if not self.con:
+            self.connect()
+        with self.con:
+            # get hardware items (except PDU's)
+            cur = self.con.cursor()
+            q = """SELECT 
+                IPv4Allocation.ip,IPv4Allocation.name, 
+                Object.name as hostname
+                FROM `racktables_db`.`IPv4Allocation`
+                LEFT JOIN Object ON Object.id = object_id"""
+            cur.execute(q)
+        data = cur.fetchall()
+        for line in data:
+            devmap = {}
+            rawip, nic_name, hostname = line
+            ip = self.convert_ip(rawip)
+            devmap.update({'ipaddress':ip})
+            devmap.update({'device':hostname})
+            if nic_name:
+                devmap.update({'tag':nic_name})
+            rest.post_ip(devmap)
+        
         
     def get_hardware(self):
         if not self.con:
@@ -626,7 +789,7 @@ class DB():
             else:
                 vendor = type
                 model = type
-            self.get_hardware_size(id)
+            
             size = self.get_hardware_size(id)
             if size:
                 floor,  height,  depth,  mount = size
@@ -693,6 +856,8 @@ class DB():
                 
             else:
                 return None, None, None, None
+        else:
+            return None, None, None, None
 
     def add_hardware(self, height, depth, name):
         hwdData = {}
@@ -702,21 +867,27 @@ class DB():
             hwdData.update({'size':height})
         if depth:
             hwdData.update({'depth':depth})
-        rest.post_hardware(hwdData)
+        if name:
+            rest.post_hardware(hwdData)
+
+
+
 
 def main():
     db = DB()
-    #db.get_subnets()
-    #db.get_ips()
-    #db.get_customers()
-    db.get_locations() # also creates ROOMS !!!
+    db.get_subnets()
+    db.get_ips()
+    db.get_buildings()
+    db.get_rooms()
     db.get_racks()
-    db.get_rack_data()
+    db.create_rack_map()
     db.get_hardware()
     db.get_devices()
+    db.get_device_to_ip()
     db.get_pdus()
+    
+    
   
-
 
 if __name__ == '__main__':
     logger = Logger(LOGFILE, STDOUT)
@@ -724,4 +895,5 @@ if __name__ == '__main__':
     main()
     print '\n[!] Done!'
     sys.exit()
+
 
