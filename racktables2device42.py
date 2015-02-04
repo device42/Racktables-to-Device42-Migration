@@ -12,7 +12,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 #############################################################################################################
-# v3 of python script that connects to RackTables DB and migrates data to Device42 appliance using APIs
+# v3.2 of python script that connects to RackTables DB and migrates data to Device42 appliance using APIs
 # Refer to README for further instructions
 #############################################################################################################
 
@@ -355,7 +355,7 @@ class DB():
                             LEFT JOIN Rack ON RackSpace.rack_id = Rack.id
                             LEFT JOIN Location ON Rack.location_id = Location.id
                             WHERE Object.id = %s
-                            AND Object.objtype_id not in (2,1560,1561,1562)""" % id
+                            AND Object.objtype_id not in (1560,1561,1562,50275)""" % id
                         
                 cur.execute(q)
                 data = cur.fetchall()
@@ -425,7 +425,7 @@ class DB():
         if name != None: 
             # set device data
             deviceData.update({'name':name})
-            deviceData.update({'hw_size':3})
+            #deviceData.update({'hw_size':3})
             if hardware:
                 deviceData.update({'hardware':hardware})
             if os:
@@ -434,10 +434,8 @@ class DB():
                 deviceData.update({'notes':note})
             if type == 8:
                 deviceData.update({'is_it_switch':'yes'})
-
-            # upload device
-            if deviceData:
-                rest.post_device(deviceData)
+            elif type == 1504:
+                deviceData.update({'type':'virtual'})
         
             
             # add device to rack:        
@@ -453,24 +451,29 @@ class DB():
             
             rack_string = rparent_name +'::'+ rlocation_name +'::'+ rrow_name +'::'+ rrack_name
             for r in self.rack_map:
-                if r.startswith(rack_string):
+                if r.startswith(rack_string+'::'):
                     rack_id = r.split('::')[-1]
             
-           
-            floor,  height,  depth,  mount = self.get_hardware_size(id)
-            self.add_hardware(height, depth, hardware)
+            if rrack_id: # rrack_id is RT rack id
+                # if the device is mounted in RT, we will try to add it to D42 hardwares.
+                floor,  height,  depth,  mount = self.get_hardware_size(id)
+                if not hardware:
+                    hardware ='generic'+str(height)+'U'
+                self.add_hardware(height, depth, hardware)
+                
+            # upload device
+            if deviceData:
+                if hardware:
+                    deviceData.update({'hardware':hardware})
+                rest.post_device(deviceData)
 
-            if rack_id:
+            if rack_id: #rack_id is D42 rack id
                 device2rack.update({'device':name})
                 if hardware:
                     device2rack.update({'hw_model':hardware})
                 device2rack.update({'rack_id':rack_id})
                 device2rack.update({'start_at':floor})
-            
-            if device2rack:
                 rest.post_device2rack(device2rack)
-
-        
                 
 
     def get_locations(self):
@@ -862,14 +865,13 @@ class DB():
     def add_hardware(self, height, depth, name):
         hwdData = {}
         hwdData.update({'type':1})
-        hwdData.update({'name':name})
         if height:
             hwdData.update({'size':height})
         if depth:
             hwdData.update({'depth':depth})
         if name:
+            hwdData.update({'name':name})
             rest.post_hardware(hwdData)
-
 
 
 
@@ -885,7 +887,7 @@ def main():
     db.get_devices()
     db.get_device_to_ip()
     db.get_pdus()
-    
+
     
   
 
