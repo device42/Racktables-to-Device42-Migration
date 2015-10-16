@@ -17,17 +17,63 @@ This repository contains sample script to take Inventory information from a Rack
 
 ### Usage
 -----------------------------
-    * add D42 URL/credentials
+	
+    * add D42 URL/credentials 
+```
+# ====== Device42 upload settings ========= #
+D42_USER    = 'device42 user'
+D42_PWD     = 'device42 password'
+D42_URL     = 'https:// device42 server IP address'
+```
+
     * add RackTables DB info/credentials
-    * adjust log settings as set on the top
-    * Run the script and enjoy!
-    * If you have any questions - feel free to reach out to us at support at device42.com
+```
+# ====== MySQL Source (Racktables) ====== #
+DB_IP       = 'racktables server IP'
+DB_PORT     = '3306'
+DB_NAME     = 'racktables database name'
+DB_USER     = 'racktables user'
+DB_PWD      = 'racktables password'
+```
+	* adjust log settings 
+```
+# ====== Log settings ==================== #
+LOGFILE     = 'migration.log'
+STDOUT      = True # print to STDOUT
+DEBUG       = True # write debug log
+DEBUG_LOG   = 'debug.log'
+```
+	* other setings
+```
+# ====== Other settings ========= #
+CHILD_AS_BUILDING   = True 
+ROW_AS_ROOM         = True   
+PDU_MOUNT           = 'left' 
+PDU_ORIENTATION     = 'front' 
+```
+
+- CHILD_AS_BUILDING: Racktables uses a concept of location and sub-location (container within container). Device42 uses a concept of Buildings and Rooms. In case CHILD_AS_BUILDING is set to True, sub-locations will be uploaded as Rooms to Device42. Otherwise, sub-locations will be uploaded as Buildings.
+- ROW_AS_ROOM: Racktables uses a concept of Rows as subordinate to locations (or sub-locations). Device42 uses concept of Rooms. In case ROW_AS_ROOM is set to true, Rows will be uploaded as Rooms to Device42. Otherwise, rows will be uploaded as rows.
+**Note: **Rooms are required because racks are mounted to rooms, not to buildings! So, please set at least one of previous settings to True.
+- PDU_MOUNT: Can be one of: 'left', 'right', 'above', 'below'. Used for Zero-U PDU migration. Default is 'left'.
+- PDU_ORIENTATION: Can be 'front' or  'back'. Used for Zero-U PDU migration. Default is 'front'.
+
+Run the script and enjoy! (```python racktables2device42.py```) 
+If you have any questions - feel free to reach out to us at support at device42.com
+
+
     
 ### Compatibility
 -----------------------------
     * Script runs on Linux and Windows
 
 
+### Gotchas
+-----------------------------
+    * Devices without names are not migrated
+    * Patch panels are not migrated.
+    * PDU migration is still a work in progress
+    * Order of function calls in main() function is important. Do not change it!
+      For example: subnets must be migrated before IP addresses in order for addresses to join appropriate subnets.
 
-*Detailed Instructions:*
-[Migrating RackTables data to Device42](http://blog.device42.com/2014/05/migrating-racktables-data-to-device42/)
+

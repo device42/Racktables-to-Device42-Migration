@@ -37,6 +37,7 @@ except:
 
 # ====== MySQL Source (Racktables) ====== #
 DB_IP       = '192.168.3.160'
+DB_PORT     = '3306'
 DB_NAME     = 'racktables_db'
 DB_USER     = 'root'
 DB_PWD      = 'P@ssw0rd'
@@ -50,11 +51,11 @@ D42_USER    = 'admin'
 D42_PWD     = 'adm!nd42'
 D42_URL     = 'https://192.168.3.30'
 # ====== Other settings ========= #
-CHILD_AS_BUILDING   = True # use RT's sub-location as Device42 building. If False, use it as a Device42 room.
-ROW_AS_ROOM         = True # use RT's row as Device42 room.
-                    # Note: Rooms are required because racks are mounted to rooms, not to buildings!
-PDU_MOUNT           = 'left'  # Can be one of: left, right, above, below. Used for Zero-U PDU migration. Default is 'left'
-PDU_ORIENTATION     = 'front' # can be one of: front, back. Used for Zero-U PDU migration. Default is 'front'
+CHILD_AS_BUILDING   = True      # use RT's sub-location as Device42 building. If False, use it as a Device42 room.
+ROW_AS_ROOM         = True      # use RT's row as Device42 room.
+                                # Note: Rooms are required because racks are mounted to rooms, not to buildings!
+PDU_MOUNT           = 'left'    # Can be one of: left, right, above, below. Used for Zero-U PDU migration. Default is 'left'
+PDU_ORIENTATION     = 'front'   # can be one of: front, back. Used for Zero-U PDU migration. Default is 'front'
 
 class Logger():
     def __init__(self, logfile, stdout):
@@ -77,7 +78,6 @@ class Logger():
         if DEBUG and os.path.exists(DEBUG_LOG):
             with open(DEBUG_LOG, 'w'):
                 pass
-
 
     def writer(self, msg):  
         if LOGFILE and LOGFILE != '':
@@ -103,7 +103,7 @@ class REST():
     def __init__(self):
         self.password = D42_PWD
         self.username = D42_USER
-        self.base_url   = D42_URL
+        self.base_url = D42_URL
         
     def uploader(self, data, url):
         payload = data
@@ -133,7 +133,7 @@ class REST():
             'Content-Type': 'application/x-www-form-urlencoded'
         }
 
-        r = requests.get(url, headers=headers, verify=False)
+        r   = requests.get(url, headers=headers, verify=False)
         msg = 'Status code: %s' % str(r.status_code)
         logger.writer(msg)
         msg = str(r.text)
@@ -251,30 +251,45 @@ class REST():
 
         
 class DB():
+    """
+    Fetching data from Racktables and converting them to Device42 API format.
+    """
     def __init__(self):
-        self.con = None
-        self.tables = []
-        self.rack_map = []
-        self.building_room_map = {}
-        self.container_map = {}
-        self.vm_hosts = {}
-        self.rack_id_map = {}
+        self.con                = None
+        self.tables             = []
+        self.rack_map           = []
+        self.vm_hosts           = {}
+        self.rack_id_map        = {}
+        self.container_map      = {}
+        self.building_room_map  = {}
         
     def connect(self):
-        self.con = sql.connect(host=DB_IP,  port=3306,  db=DB_NAME, user=DB_USER, passwd=DB_PWD)
+        """
+        Connection to RT database
+        :return:
+        """
+        self.con = sql.connect(host=DB_IP,  port=int(DB_PORT),  db=DB_NAME, user=DB_USER, passwd=DB_PWD)
 
     @staticmethod
     def convert_ip(ip_raw):
+        """
+        IP address conversion to human readable format
+        :param ip_raw:
+        :return:
+        """
         ip = socket.inet_ntoa(struct.pack('!I', ip_raw))
         return ip
 
     def get_ips(self):
+        """
+        Fetch IPs from RT and send them to upload function
+        :return:
+        """
         adrese = []
         if not self.con:
             self.connect()
         with self.con:
             cur = self.con.cursor()
-            #q = "SELECT * FROM IPv4Address" 
             q = 'SELECT * FROM IPv4Address WHERE IPv4Address.name != ""'
             cur.execute(q)
             ips = cur.fetchall()
@@ -298,6 +313,10 @@ class DB():
             rest.post_ip(net)
 
     def get_subnets(self):
+        """
+        Fetch subnets from RT and send them to upload function
+        :return:
+        """
         subs = {}
         if not self.con:
             self.connect()
@@ -318,6 +337,10 @@ class DB():
             rest.post_subnet(subs)
 
     def get_infrastructure(self):
+        """
+        Get locations, rows and racks from RT, convert them to buildings and rooms and send to uploader.
+        :return:
+        """
         buildings_map   = {}
         rooms_map       = {}
         rows_map        = {}
@@ -329,7 +352,7 @@ class DB():
         # ============ BUILDINGS AND ROOMS ============
         with self.con:
             cur = self.con.cursor()
-            q = """select id,name, parent_id, parent_name from Location"""
+            q   = """select id,name, parent_id, parent_name from Location"""
             cur.execute(q)
             raw = cur.fetchall()
         if CHILD_AS_BUILDING:
@@ -348,7 +371,7 @@ class DB():
         if DEBUG:
             msg = ('Buildings',str(buildings_map))
             logger.debugger(msg)
-        bdata = {}
+        bdata   = {}
         for bid, building in buildings_map.items():
             bdata.update({'name':building})
             rest.post_building(bdata)
@@ -362,11 +385,10 @@ class DB():
                 roomdata.update({'building':parent})
                 rest.post_room(roomdata)
 
-
         # ============ ROWS AND RACKS ============
         with self.con:
             cur = self.con.cursor()
-            q = """SELECT id, name ,height, row_id, row_name, location_id, location_name from Rack;"""
+            q   = """SELECT id, name ,height, row_id, row_name, location_id, location_name from Rack;"""
             cur.execute(q)
             raw = cur.fetchall()
 
@@ -410,20 +432,24 @@ class DB():
             msg = ('Racks',str(racks))
             logger.debugger(msg)
         for rack in racks:
-            rt_rack_id = rack['rt_id']
+            rt_rack_id  = rack['rt_id']
             del rack['rt_id']
-            response  = rest.post_rack(rack)
+            response    = rest.post_rack(rack)
             d42_rack_id = response['msg'][1]
 
             self.rack_id_map.update({rt_rack_id:d42_rack_id})
 
     def get_hardware(self):
+        """
+        Get hardware from RT and send it to uploader
+        :return:
+        """
         if not self.con:
             self.connect()
         with self.con:
             # get hardware items (except PDU's)
             cur = self.con.cursor()
-            q = """SELECT
+            q   =   """SELECT
                     Object.id,Object.name as Description, Object.label as Name,
                     Object.asset_no as Asset,Dictionary.dict_value as Type
                     FROM Object
@@ -431,7 +457,7 @@ class DB():
                     LEFT JOIN Attribute ON AttributeValue.attr_id = Attribute.id
                     LEFT JOIN Dictionary ON Dictionary.dict_key = AttributeValue.uint_value
                     WHERE Attribute.id=2 AND Object.objtype_id != 2
-                """
+                    """
             cur.execute(q)
         data = cur.fetchall()
 
@@ -443,11 +469,11 @@ class DB():
         # RT does not impose height for devices of the same hardware model so it might happen that -
         # two or more devices based on same HW model have different size in rack
         # here we try to find and set smallest U for device
-        hwsize_map = {}
+        hwsize_map  = {}
         for line in data:
-            line = [0 if not x else x for x in line]
+            line    = [0 if not x else x for x in line]
             data_id, description, name, asset, dtype = line
-            size = self.get_hardware_size(data_id)
+            size    = self.get_hardware_size(data_id)
             if size:
                 floor,  height,  depth,  mount = size
                 if data_id not in hwsize_map:
@@ -459,7 +485,7 @@ class DB():
 
         for line in data:
             hwddata = {}
-            line = [0 if not x else x for x in line]
+            line    = [0 if not x else x for x in line]
             data_id, description, name, asset, dtype = line
 
             if '%GPASS%' in dtype:
@@ -467,10 +493,10 @@ class DB():
             elif len(dtype.split()) > 1:
                 venmod =  dtype.split()
                 vendor = venmod[0]
-                model = ' '.join(venmod[1:])
+                model  = ' '.join(venmod[1:])
             else:
                 vendor = dtype
-                model = dtype
+                model  = dtype
 
             size = self.get_hardware_size(data_id)
             if size:
@@ -486,21 +512,30 @@ class DB():
                 rest.post_hardware(hwddata)
 
     def get_hardware_size(self, data_id):
+        """
+        Calculate hardware size.
+        :param data_id: hw id
+        :return:
+            floor   - starting U location for the device in the rack
+            height  - height of the device
+            depth   - depth of the device (full, half)
+            mount   - orientation of the device in the rack. Can be front or back
+        """
         if not self.con:
             self.connect()
         with self.con:
             # get hardware items
             cur = self.con.cursor()
-            q = """SELECT unit_no,atom FROM RackSpace WHERE object_id = %s""" % data_id
+            q   = """SELECT unit_no,atom FROM RackSpace WHERE object_id = %s""" % data_id
             cur.execute(q)
-        data = cur.fetchall()
+        data    = cur.fetchall()
         if data != ():
             front    = 0
             interior = 0
             rear     = 0
             floor    = 0
-            depth  =  1 # 1 for full depth (default) and 2 for half depth
-            mount  = 'front' # can be [front | rear]
+            depth    =  1 # 1 for full depth (default) and 2 for half depth
+            mount    = 'front' # can be [front | rear]
             i = 1
 
             for line in data:
@@ -525,26 +560,24 @@ class DB():
 
             elif front and interior and not rear: #half depth, front mounted
                 height = front
-                depth = 2
+                depth  = 2
                 return floor,  height,  depth,  mount
 
             elif interior and rear and not front: # half depth,  rear mounted
                 height = rear
-                depth = 2
-                mount = 'rear'
+                depth  = 2
+                mount  = 'rear'
                 return floor,  height,  depth,  mount
 
             # for devices that look like less than half depth:
             elif front and not interior and not rear:
                 height = front
-                depth = 2
+                depth  = 2
                 return  floor,  height,  depth,  mount
             elif rear and not interior and not front:
                 height = rear
-                depth = 2
+                depth  = 2
                 return  floor,  height,  depth,  mount
-
-
             else:
                 return None, None, None, None
         else:
@@ -571,7 +604,7 @@ class DB():
             self.connect()
         with self.con:
             cur = self.con.cursor()
-            q = """SELECT O.id, O.name,
+            q   = """SELECT O.id, O.name,
                     (SELECT O_C.id
                     FROM EntityLink EL
                     LEFT JOIN Object O_C ON EL.parent_entity_id = O_C.id
@@ -676,13 +709,9 @@ class DB():
         opsys       = None
         hardware    = None
         note        = None
-        rparent_name    = None
-        rlocation_name  = None
-        rrow_name       = None
-        rrack_name      = None
-        rrack_id        = None
-        floor           = None
-        dev_type        = 0
+        rrack_id    = None
+        floor       = None
+        dev_type    = 0
 
         for x in data:
             dev_type,  rdesc, rname,  rasset, rattr_name,  rtype, \
@@ -752,15 +781,19 @@ class DB():
                     pass
 
             d42_rack_id = None
+
             if rrack_id: # rrack_id is RT rack id
                 d42_rack_id = self.rack_id_map[rrack_id]
-                # if the device is mounted in RT, we will try to add it to D42 hardwares.
-                floor,  height,  depth,  mount = self.get_hardware_size(dev_id)
-                if floor is not None:
-                    floor = int(floor) + 1
-                if not hardware:
-                    hardware ='generic'+str(height)+'U'
-                self.add_hardware(height, depth, hardware)
+
+            # if the device is mounted in RT, we will try to add it to D42 hardwares.
+            floor,  height,  depth,  mount = self.get_hardware_size(dev_id)
+            if floor is not None:
+                floor = int(floor) + 1
+            if not hardware:
+                hardware ='generic'+str(height)+'U'
+            self.add_hardware(height, depth, hardware)
+
+
                 
             # upload device
             if devicedata:
@@ -788,7 +821,7 @@ class DB():
                 logger.writer(msg)
 
         else:
-            #device has no name thus it cannot be migrated
+            # device has no name thus it cannot be migrated
             msg = '\n-----------------------------------------------------------------------\
             \n[!] INFO: Device with RT id=%d cannot be migrated because it has no name.' % dev_id
             logger.writer(msg)
@@ -799,11 +832,11 @@ class DB():
         with self.con:
             # get hardware items (except PDU's)
             cur = self.con.cursor()
-            q = """SELECT
-                IPv4Allocation.ip,IPv4Allocation.name,
-                Object.name as hostname
-                FROM %s.`IPv4Allocation`
-                LEFT JOIN Object ON Object.id = object_id""" % DB_NAME
+            q   = """SELECT
+                    IPv4Allocation.ip,IPv4Allocation.name,
+                    Object.name as hostname
+                    FROM %s.`IPv4Allocation`
+                    LEFT JOIN Object ON Object.id = object_id""" % DB_NAME
             cur.execute(q)
         data = cur.fetchall()
 
@@ -826,7 +859,7 @@ class DB():
             self.connect()
         with self.con:
             cur = self.con.cursor()
-            q = """SELECT 
+            q   = """SELECT
                     Object.id,Object.name as Description, Object.label as Name, Object.asset_no as Asset, 
                     Object.comment as Comment,Dictionary.dict_value as Type, RackSpace.atom as Position, 
                     (SELECT Object.id FROM Object WHERE Object.id = RackSpace.rack_id) as RackID
@@ -836,14 +869,13 @@ class DB():
                     LEFT JOIN Dictionary ON Dictionary.dict_key = AttributeValue.uint_value
                     LEFT JOIN RackSpace ON RackSpace.object_id = Object.id
                     WHERE Object.objtype_id = 2  
-                """
+                  """
             cur.execute(q)
         data = cur.fetchall()
 
         if DEBUG:
             msg = ('PDUs',str(data))
             logger.debugger(msg)
-
 
         rack_mounted    = []
         pdumap          = {}
@@ -926,7 +958,7 @@ class DB():
             self.connect()
         with self.con:
             cur = self.con.cursor()
-            q = """SELECT
+            q   = """SELECT
                     EntityLink.parent_entity_id
                     FROM EntityLink
                     WHERE EntityLink.child_entity_id = %s
@@ -940,8 +972,8 @@ class DB():
 
 def main():
     db = DB()
-    db.get_subnets()
-    db.get_ips()
+    #db.get_subnets()
+    #db.get_ips()
     db.get_infrastructure()
     db.get_hardware()
     db.get_container_map()
@@ -949,6 +981,7 @@ def main():
     db.get_devices()
     db.get_device_to_ip()
     db.get_pdus()
+
 
 
 
