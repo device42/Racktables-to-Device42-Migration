@@ -79,7 +79,7 @@ class Logger:
                 f.write(row + '\r\n\r\n')  # \r\n for notepad
 
 
-class REST():
+class REST:
     def __init__(self):
         self.password = conf.D42_PWD
         self.username = conf.D42_USER
