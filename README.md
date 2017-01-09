@@ -18,38 +18,39 @@ This repository contains sample script to take Inventory information from a Rack
 ### Usage
 -----------------------------
 	
-    * add D42 URL/credentials 
+    * rename conf.sample to conf
+    * in conf add D42 URL/credentials
 ```
 # ====== Device42 upload settings ========= #
-D42_USER    = 'device42 user'
-D42_PWD     = 'device42 password'
-D42_URL     = 'https:// device42 server IP address'
+D42_USER = 'device42 user'
+D42_PWD = 'device42 password'
+D42_URL = 'https:// device42 server IP address'
 ```
 
     * add RackTables DB info/credentials
 ```
 # ====== MySQL Source (Racktables) ====== #
-DB_IP       = 'racktables server IP'
-DB_PORT     = '3306'
-DB_NAME     = 'racktables database name'
-DB_USER     = 'racktables user'
-DB_PWD      = 'racktables password'
+DB_IP = 'racktables server IP'
+DB_PORT = '3306'
+DB_NAME = 'racktables database name'
+DB_USER = 'racktables user'
+DB_PWD = 'racktables password'
 ```
 	* adjust log settings 
 ```
 # ====== Log settings ==================== #
-LOGFILE     = 'migration.log'
-STDOUT      = True # print to STDOUT
-DEBUG       = True # write debug log
-DEBUG_LOG   = 'debug.log'
+LOGFILE = 'migration.log'
+STDOUT = True # print to STDOUT
+DEBUG = True # write debug log
+DEBUG_LOG = 'debug.log'
 ```
 	* other setings
 ```
 # ====== Other settings ========= #
-CHILD_AS_BUILDING   = True 
-ROW_AS_ROOM         = True   
-PDU_MOUNT           = 'left' 
-PDU_ORIENTATION     = 'front' 
+CHILD_AS_BUILDING = True
+ROW_AS_ROOM = True
+PDU_MOUNT = 'left'
+PDU_ORIENTATION = 'front'
 ```
 
 - CHILD_AS_BUILDING: Racktables uses a concept of location and sub-location (container within container). Device42 uses a concept of Buildings and Rooms. In case CHILD_AS_BUILDING is set to True, sub-locations will be uploaded as Rooms to Device42. Otherwise, sub-locations will be uploaded as Buildings.
