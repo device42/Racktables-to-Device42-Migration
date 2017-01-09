@@ -857,7 +857,7 @@ class DB:
         with self.con:
             cur = self.con.cursor()
             q = """SELECT
-                    Object.id,Object.name as Description, Object.label as Name, Object.asset_no as Asset,
+                    Object.id,Object.name as Name, Object.asset_no as Asset,
                     Object.comment as Comment,Dictionary.dict_value as Type, RackSpace.atom as Position,
                     (SELECT Object.id FROM Object WHERE Object.id = RackSpace.rack_id) as RackID
                     FROM Object
@@ -882,8 +882,8 @@ class DB:
         for line in data:
             pdumodel = {}
             pdudata = {}
-            line = ['' if not x else x for x in line]
-            pdu_id, description, name, asset, comment, pdu_type, position, rack_id = line
+            line = ['' if x is None else x for x in line]
+            pdu_id, name, asset, comment, pdu_type, position, rack_id = line
 
             if '%GPASS%' in pdu_type:
                 pdu_type = pdu_type.replace('%GPASS%', ' ')
@@ -919,22 +919,39 @@ class DB:
                 if pdu_id not in rack_mounted:
                     rack_mounted.append(pdu_id)
                     floor, height, depth, mount = self.get_hardware_size(pdu_id)
-                    floor = int(floor) + 1
-                    d42_rack_id = self.rack_id_map[rack_id]
-                    if floor:
-                        rdata = {}
-                        rdata.update({'pdu_id': pdumap[pdu_id]})
-                        rdata.update({'rack_id': d42_rack_id})
-                        rdata.update({'pdu_model': pdu_type})
-                        rdata.update({'where': 'mounted'})
-                        rdata.update({'start_at': floor})
-                        rdata.update({'orientation': mount})
-                        rest.post_pdu_to_rack(rdata, d42_rack_id)
+                    try:
+                        floor = int(floor) + 1
+                        d42_rack_id = self.rack_id_map[rack_id]
+                        if floor:
+                            rdata = {}
+                            rdata.update({'pdu_id': pdumap[pdu_id]})
+                            rdata.update({'rack_id': d42_rack_id})
+                            rdata.update({'pdu_model': pdu_type})
+                            rdata.update({'where': 'mounted'})
+                            rdata.update({'start_at': floor})
+                            rdata.update({'orientation': mount})
+                            rest.post_pdu_to_rack(rdata, d42_rack_id)
+                    except TypeError:
+                        msg = '\n-----------------------------------------------------------------------\
+                        \n[!] INFO: Cannot mount pdu "%s" (RT id = %d) to the rack.\
+                        \n\tFloor returned from "get_hardware_size" function was: %s' % (name, pdu_id, str(floor))
+                        logger.writer(msg)
+                    except KeyError:
+                        msg = '\n-----------------------------------------------------------------------\
+                        \n[!] INFO: Cannot mount pdu "%s" (RT id = %d) to the rack.\
+                        \n\tWrong rack id map value: %s' % (name, pdu_id, str(rack_id))
+                        logger.writer(msg)
             # It's Zero-U then
             else:
                 rack_id = self.get_rack_id_for_zero_us(pdu_id)
                 if rack_id:
-                    d42_rack_id = self.rack_id_map[rack_id]
+                    try:
+                        d42_rack_id = self.rack_id_map[rack_id]
+                    except KeyError:
+                        msg = '\n-----------------------------------------------------------------------\
+                        \n[!] INFO: Cannot mount pdu "%s" (RT id = %d) to the rack.\
+                        \n\tWrong rack id map value: %s' % (name, pdu_id, str(rack_id))
+                        logger.writer(msg)
                     if conf.PDU_MOUNT.lower() in ('left', 'right', 'above', 'below'):
                         where = conf.PDU_MOUNT.lower()
                     else:
@@ -945,12 +962,18 @@ class DB:
                         mount = 'front'
                     rdata = {}
 
-                    rdata.update({'pdu_id': pdumap[pdu_id]})
-                    rdata.update({'rack_id': d42_rack_id})
-                    rdata.update({'pdu_model': pdu_type})
-                    rdata.update({'where': where})
-                    rdata.update({'orientation': mount})
-                    rest.post_pdu_to_rack(rdata, d42_rack_id)
+                    try:
+                        rdata.update({'pdu_id': pdumap[pdu_id]})
+                        rdata.update({'rack_id': d42_rack_id})
+                        rdata.update({'pdu_model': pdu_type})
+                        rdata.update({'where': where})
+                        rdata.update({'orientation': mount})
+                        rest.post_pdu_to_rack(rdata, d42_rack_id)
+                    except UnboundLocalError:
+                        msg = '\n-----------------------------------------------------------------------\
+                        \n[!] INFO: Cannot mount pdu "%s" (RT id = %d) to the rack.\
+                        \n\tWrong rack id: %s' % (name, pdu_id, str(rack_id))
+                        logger.writer(msg)
 
     def get_ports(self, device_id):
         if not self.con:
