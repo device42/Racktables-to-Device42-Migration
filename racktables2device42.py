@@ -195,6 +195,12 @@ class REST:
         logger.writer(msg)
         self.uploader(data, url)
 
+    def post_switchport(self, data):
+        url = self.base_url + '/api/1.0/switchports/'
+        msg = '\r\nUploading switchports data to %s ' % url
+        logger.writer(msg)
+        self.uploader(data, url)
+
     def get_pdu_models(self):
         url = self.base_url + '/api/1.0/pdu_models/'
         msg = '\r\nFetching PDU models from %s ' % url
@@ -781,6 +787,17 @@ class DB:
                     devicedata.update({'hardware': hardware[:48]})
                 rest.post_device(devicedata)
 
+                # update switchport
+                if dev_type == 8:
+                    ports = self.get_ports(dev_id)
+                    if ports:
+                        for item in self.get_ports(dev_id):
+                            rest.post_switchport({
+                                'port': item[0],
+                                'switch': name,
+                                'label': item[1]
+                            })
+
                 # if there is a device, we can try to mount it to the rack
                 if d42_rack_id and floor:  # rack_id is D42 rack id
                     device2rack.update({'device': name})
@@ -934,6 +951,23 @@ class DB:
                     rdata.update({'where': where})
                     rdata.update({'orientation': mount})
                     rest.post_pdu_to_rack(rdata, d42_rack_id)
+
+    def get_ports(self, device_id):
+        if not self.con:
+            self.connect()
+        with self.con:
+            cur = self.con.cursor()
+            q = """SELECT
+                    name,
+                    label
+                    FROM Port
+                    WHERE object_id = %s""" % device_id
+            cur.execute(q)
+        data = cur.fetchall()
+        if data:
+            return data
+        else:
+            return False
 
     def get_rack_id_for_zero_us(self, pdu_id):
         if not self.con:
