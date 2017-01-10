@@ -201,6 +201,19 @@ class REST:
         logger.writer(msg)
         self.uploader(data, url)
 
+    def post_patch_panel(self, data):
+        url = self.base_url + '/api/1.0/patch_panel_models/'
+        msg = '\r\nUploading patch panels data to %s ' % url
+        logger.writer(msg)
+        data = self.uploader(data, url)
+        return data
+
+    def post_patch_panel_module_models(self, data):
+        url = self.base_url + '/api/1.0/patch_panel_module_models/'
+        msg = '\r\nUploading patch panels modules data to %s ' % url
+        logger.writer(msg)
+        self.uploader(data, url)
+
     def get_pdu_models(self):
         url = self.base_url + '/api/1.0/pdu_models/'
         msg = '\r\nFetching PDU models from %s ' % url
@@ -666,7 +679,8 @@ class DB:
                             Object.name as Description,
                             Object.label as Name,
                             Object.asset_no as Asset,
-                            Attribute.name as Name,Dictionary.dict_value as Type,
+                            Attribute.name as Name,
+                            Dictionary.dict_value as Type,
                             Object.comment as Comment,
                             RackSpace.rack_id as RackID,
                             Rack.name as rack_name,
@@ -678,8 +692,8 @@ class DB:
                             FROM Object
                             LEFT JOIN AttributeValue ON Object.id = AttributeValue.object_id
                             LEFT JOIN Attribute ON AttributeValue.attr_id = Attribute.id
-                            LEFT JOIN Dictionary ON Dictionary.dict_key = AttributeValue.uint_value
                             LEFT JOIN RackSpace ON Object.id = RackSpace.object_id
+                            LEFT JOIN Dictionary ON Dictionary.dict_key = AttributeValue.uint_value
                             LEFT JOIN Rack ON RackSpace.rack_id = Rack.id
                             LEFT JOIN Location ON Rack.location_id = Location.id
                             WHERE Object.id = %s
@@ -858,7 +872,7 @@ class DB:
             cur = self.con.cursor()
             q = """SELECT
                     Object.id,Object.name as Name, Object.asset_no as Asset,
-                    Object.comment as Comment,Dictionary.dict_value as Type, RackSpace.atom as Position,
+                    Object.comment as Comment, Dictionary.dict_value as Type, RackSpace.atom as Position,
                     (SELECT Object.id FROM Object WHERE Object.id = RackSpace.rack_id) as RackID
                     FROM Object
                     LEFT JOIN AttributeValue ON Object.id = AttributeValue.object_id
@@ -975,6 +989,51 @@ class DB:
                         \n\tWrong rack id: %s' % (name, pdu_id, str(rack_id))
                         logger.writer(msg)
 
+    def get_patch_panels(self):
+        if not self.con:
+            self.connect()
+        with self.con:
+            cur = self.con.cursor()
+            q = """SELECT
+                   id,
+                   name,
+                   AttributeValue.uint_value
+                   FROM Object
+                   LEFT JOIN AttributeValue ON AttributeValue.object_id = id AND AttributeValue.attr_id = 6
+                   WHERE Object.objtype_id = 9
+                 """
+            cur.execute(q)
+        data = cur.fetchall()
+
+        if conf.DEBUG:
+            msg = ('PDUs', str(data))
+            logger.debugger(msg)
+
+        for item in data:
+            ports = self.get_ports(item[0])
+            patch_type = 'singular'
+            port_type = None
+            if ports is not False:
+                if len(ports) > 1:
+                    patch_type = 'modular'
+                    for port in ports:
+                        rest.post_patch_panel_module_models({
+                            'name': port[0],
+                            'port_type': port[2][:12],
+                            'number_of_ports': 1,
+                            'number_of_ports_in_row': 1
+                        })
+                else:
+                    port_type = ports[0][2]
+
+            rest.post_patch_panel({
+                'name': item[1],
+                'type': patch_type,
+                'port_type': port_type,
+                'number_of_ports': item[2],
+                'number_of_ports_in_row': item[2]
+            })
+
     def get_ports(self, device_id):
         if not self.con:
             self.connect()
@@ -982,8 +1041,10 @@ class DB:
             cur = self.con.cursor()
             q = """SELECT
                     name,
-                    label
+                    label,
+                    PortOuterInterface.oif_name
                     FROM Port
+                    LEFT JOIN PortOuterInterface ON PortOuterInterface.id = type
                     WHERE object_id = %s""" % device_id
             cur.execute(q)
         data = cur.fetchall()
@@ -1019,6 +1080,7 @@ def main():
     db.get_devices()
     db.get_device_to_ip()
     db.get_pdus()
+    db.get_patch_panels()
 
 
 if __name__ == '__main__':
