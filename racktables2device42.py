@@ -205,8 +205,7 @@ class REST:
         url = self.base_url + '/api/1.0/patch_panel_models/'
         msg = '\r\nUploading patch panels data to %s ' % url
         logger.writer(msg)
-        data = self.uploader(data, url)
-        return data
+        self.uploader(data, url)
 
     def post_patch_panel_module_models(self, data):
         url = self.base_url + '/api/1.0/patch_panel_module_models/'
