@@ -1014,16 +1014,25 @@ class DB:
             port_type = None
             if ports is not False:
                 if len(ports) > 1:
-                    patch_type = 'modular'
+                    types = []
+
+                    # check patch_type
                     for port in ports:
-                        rest.post_patch_panel_module_models({
-                            'name': port[0],
-                            'port_type': port[2][:12],
-                            'number_of_ports': 1,
-                            'number_of_ports_in_row': 1
-                        })
-                else:
-                    port_type = ports[0][2]
+                        if port[2][:12] not in types:
+                            types.append(port[2][:12])
+
+                    if len(types) > 1:
+                        patch_type = 'modular'
+                        for port in ports:
+                            rest.post_patch_panel_module_models({
+                                'name': port[0],
+                                'port_type': port[2][:12],
+                                'number_of_ports': 1,
+                                'number_of_ports_in_row': 1
+                            })
+
+            if patch_type == 'singular':
+                    port_type = ports[0][2][:12]
 
             rest.post_patch_panel({
                 'name': item[1],
@@ -1072,6 +1081,7 @@ def main():
     db = DB()
     # db.get_subnets()
     # db.get_ips()
+    '''
     db.get_infrastructure()
     db.get_hardware()
     db.get_container_map()
@@ -1079,6 +1089,7 @@ def main():
     db.get_devices()
     db.get_device_to_ip()
     db.get_pdus()
+    '''
     db.get_patch_panels()
 
 

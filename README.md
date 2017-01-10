@@ -76,8 +76,8 @@ If you have any questions - feel free to reach out to us at support at device42.
     * PDU migration is still a work in progress
     * Order of function calls in main() function is important. Do not change it!
       For example: subnets must be migrated before IP addresses in order for addresses to join appropriate subnets.
-    * Patch panels with more then 1 port go to the modular section
-    * Patch panels with 1 port go to the singular section
+    * Patch panels with more then 1 port type go to the modular section
+    * Patch panels with 1 port type go to the singular section
     * Maximum Port type name length = 12
     * Maximum Hardware name length = 48
     * Maximum Pdu type name length = 64
