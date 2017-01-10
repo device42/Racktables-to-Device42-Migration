@@ -1081,7 +1081,6 @@ def main():
     db = DB()
     # db.get_subnets()
     # db.get_ips()
-    '''
     db.get_infrastructure()
     db.get_hardware()
     db.get_container_map()
@@ -1089,7 +1088,6 @@ def main():
     db.get_devices()
     db.get_device_to_ip()
     db.get_pdus()
-    '''
     db.get_patch_panels()
 
 
