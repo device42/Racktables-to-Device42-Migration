@@ -1,24 +1,24 @@
 [Device42](http://www.device42.com/) is a comprehensive data center inventory management and IP Address management software 
 that integrates centralized password management, impact charts and applications mappings with IT asset management.
 
-This repository contains sample script to take Inventory information from a RackTables install and send it to Device42 appliance using the REST APIs.
+This repository contains sample script to take Inventory information from a RackTables installation and send it to Device42 appliance using the REST APIs.
 
 ## Assumptions
 -----------------------------
     * The script assumes that you are running RackTables  0.20.7 and above
-    * This script works with Device42 5.7.3.1396022962 and above
+    * This script works with Device42 10.5.0 and above
 
 ### Requirements
 -----------------------------
     * python 2.7.x
-    * pymysql (you can install it with sudo pip install pymysql)
+    * pymysql (you can install it on ubuntu with `sudo pip install pymysql`, other similar commands for other OS)
     * requests (you can install it with sudo pip install requests or sudo apt-get install python-requests)
 	* allow remote connections to RackTables MySQL port 3306
 
 ### Usage
 -----------------------------
 	
-    * rename conf.sample to conf
+    * copy conf.sample to conf
     * in conf add D42 URL/credentials
 ```
 # ====== Device42 upload settings ========= #
@@ -72,14 +72,13 @@ If you have any questions - feel free to reach out to us at support at device42.
 ### Gotchas
 -----------------------------
     * Devices without names are not migrated
-    * Patch panels are not migrated.
     * PDU migration is still a work in progress
     * Order of function calls in main() function is important. Do not change it!
       For example: subnets must be migrated before IP addresses in order for addresses to join appropriate subnets.
-    * Patch panels with more then 1 port go to the modular section
-    * Patch panels with 1 port go to the singular section
-    * Maximum Port type name length = 12
-    * Maximum Hardware name length = 48
-    * Maximum Pdu type name length = 64
+    * If patch panels have more than 1 port type, we will create modular patch panel in D42
+    * For following, we will truncate data from your racktables instance:
+	    * Maximum Port type name length = 12
+	    * Maximum Hardware name length = 48
+	    * Maximum Pdu type name length = 64
 
 
