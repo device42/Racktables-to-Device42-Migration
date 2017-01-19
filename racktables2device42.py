@@ -258,6 +258,7 @@ class DB:
         self.tables = []
         self.rack_map = []
         self.vm_hosts = {}
+        self.chassis = {}
         self.rack_id_map = {}
         self.container_map = {}
         self.building_room_map = {}
@@ -604,55 +605,54 @@ class DB:
             self.connect()
         with self.con:
             cur = self.con.cursor()
-            q = """SELECT O.id, O.name,
-                    (SELECT O_C.id
-                    FROM EntityLink EL
-                    LEFT JOIN Object O_C ON EL.parent_entity_id = O_C.id
-                    WHERE EL.child_entity_id = O.id
-                    AND EL.parent_entity_type = 'object'
-                    AND EL.child_entity_type = 'object'
-                    AND O_C.objtype_id = 1505 LIMIT 1) AS cluster_id,
-                    (SELECT O_C.name
-                    FROM EntityLink EL
-                    LEFT JOIN Object O_C ON EL.parent_entity_id = O_C.id
-                    WHERE EL.child_entity_id = O.id
-                    AND EL.parent_entity_type = 'object'
-                    AND EL.child_entity_type = 'object'
-                    AND O_C.objtype_id = 1505 LIMIT 1) AS cluster_name,
-                    (SELECT COUNT(*) FROM EntityLink EL
-                    LEFT JOIN Object O_VM ON EL.child_entity_id = O_VM.id
-                    WHERE EL.parent_entity_type = 'object'
-                    AND EL.child_entity_type = 'object'
-                    AND EL.parent_entity_id = O.id
-                    AND O_VM.objtype_id = 1504) AS VMs
-                    FROM Object O
-                    LEFT JOIN AttributeValue AV ON O.id = AV.object_id
-                    WHERE O.objtype_id = 4
-                    AND AV.attr_id = 26
-                    AND AV.uint_value = 1501
-                    ORDER BY O.name"""
+            q = """SELECT id, name FROM Object WHERE objtype_id='1505'"""
             cur.execute(q)
             raw = cur.fetchall()
 
         dev = {}
         for rec in raw:
             host_id = int(rec[0])
-            name = rec[1].strip()
+            try:
+                name = rec[1].strip()
+            except AttributeError:
+                continue
             self.vm_hosts.update({host_id: name})
             dev.update({'name': name})
             dev.update({'is_it_virtual_host': 'yes'})
-        rest.post_device(dev)
+            rest.post_device(dev)
+
+    def get_chassis(self):
+        if not self.con:
+            self.connect()
+        with self.con:
+            cur = self.con.cursor()
+            q = """SELECT id, name FROM Object WHERE objtype_id='1502'"""
+            cur.execute(q)
+            raw = cur.fetchall()
+
+        dev = {}
+        for rec in raw:
+            host_id = int(rec[0])
+            try:
+                name = rec[1].strip()
+            except AttributeError:
+                continue
+            self.chassis.update({host_id: name})
+            dev.update({'name': name})
+            dev.update({'is_it_blade_host': 'yes'})
+            rest.post_device(dev)
 
     def get_container_map(self):
         """
         Which VM goes into which VM host?
+        Which Blade goes into which Chassis ?
         :return:
         """
         if not self.con:
             self.connect()
         with self.con:
             cur = self.con.cursor()
-            q = """SELECT parent_entity_id AS container_id ,child_entity_id AS object_id
+            q = """SELECT parent_entity_id AS container_id, child_entity_id AS object_id
                     FROM EntityLink WHERE child_entity_type='object' AND parent_entity_type = 'object'"""
             cur.execute(q)
             raw = cur.fetchall()
@@ -696,7 +696,7 @@ class DB:
                             LEFT JOIN Rack ON RackSpace.rack_id = Rack.id
                             LEFT JOIN Location ON Rack.location_id = Location.id
                             WHERE Object.id = %s
-                            AND Object.objtype_id not in (1560,1561,1562,50275)""" % dev_id
+                            AND Object.objtype_id not in (2,9,1502,1505,1560,1561,1562,50275)""" % dev_id
 
                 cur.execute(q)
                 data = cur.fetchall()
@@ -772,8 +772,19 @@ class DB:
                 devicedata.update({'is_it_virtual_host': 'yes'})
             if dev_type == 8:
                 devicedata.update({'is_it_switch': 'yes'})
+            elif dev_type == 1502:
+                devicedata.update({'is_it_blade_host': 'yes'})
+            elif dev_type == 4:
+                devicedata.update({'type': 'blade'})
+                try:
+                    blade_host_id = self.container_map[dev_id]
+                    blade_host_name = self.chassis[blade_host_id]
+                    devicedata.update({'blade_host': blade_host_name})
+                except KeyError:
+                    pass
             elif dev_type == 1504:
                 devicedata.update({'type': 'virtual'})
+                devicedata.pop('hardware', None)
                 try:
                     vm_host_id = self.container_map[dev_id]
                     vm_host_name = self.vm_hosts[vm_host_id]
@@ -782,21 +793,22 @@ class DB:
                     pass
 
             d42_rack_id = None
+            # except VMs
+            if dev_type != 1504:
+                if rrack_id:
+                    d42_rack_id = self.rack_id_map[rrack_id]
 
-            if rrack_id:  # rrack_id is RT rack id
-                d42_rack_id = self.rack_id_map[rrack_id]
-
-            # if the device is mounted in RT, we will try to add it to D42 hardwares.
-            floor, height, depth, mount = self.get_hardware_size(dev_id)
-            if floor is not None:
-                floor = int(floor) + 1
-            if not hardware:
-                hardware = 'generic' + str(height) + 'U'
-            self.add_hardware(height, depth, hardware)
+                # if the device is mounted in RT, we will try to add it to D42 hardwares.
+                floor, height, depth, mount = self.get_hardware_size(dev_id)
+                if floor is not None:
+                    floor = int(floor) + 1
+                if not hardware:
+                    hardware = 'generic' + str(height) + 'U'
+                self.add_hardware(height, depth, hardware)
 
             # upload device
             if devicedata:
-                if hardware:
+                if hardware and dev_type != 1504:
                     devicedata.update({'hardware': hardware[:48]})
                 rest.post_device(devicedata)
 
@@ -812,7 +824,7 @@ class DB:
                             })
 
                 # if there is a device, we can try to mount it to the rack
-                if d42_rack_id and floor:  # rack_id is D42 rack id
+                if dev_type != 1504 and d42_rack_id and floor:  # rack_id is D42 rack id
                     device2rack.update({'device': name})
                     if hardware:
                         device2rack.update({'hw_model': hardware[:48]})
@@ -1088,11 +1100,12 @@ def main():
     db.get_infrastructure()
     db.get_hardware()
     db.get_container_map()
+    db.get_chassis()
     db.get_vmhosts()
-    db.get_devices()
     db.get_device_to_ip()
     db.get_pdus()
     db.get_patch_panels()
+    db.get_devices()
 
 
 if __name__ == '__main__':
