@@ -1031,16 +1031,20 @@ class DB:
                                 'number_of_ports_in_row': 1
                             })
 
-            if patch_type == 'singular':
+                if patch_type == 'singular':
                     port_type = ports[0][2][:12]
 
-            rest.post_patch_panel({
+            payload = {
                 'name': item[1],
                 'type': patch_type,
-                'port_type': port_type,
                 'number_of_ports': item[2],
                 'number_of_ports_in_row': item[2]
-            })
+            }
+
+            if port_type is not None:
+                payload.update({'port_type': port_type})
+
+            rest.post_patch_panel(payload)
 
     def get_ports(self, device_id):
         if not self.con:
