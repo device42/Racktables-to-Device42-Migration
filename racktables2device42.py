@@ -834,7 +834,7 @@ class DB:
                     device2rack.update({'start_at': floor})
                     rest.post_device2rack(device2rack)
                 else:
-                    if floor == 'auto' and dev_type != 1504 and d42_rack_id is not None:
+                    if dev_type != 1504 and d42_rack_id is not None:
                         msg = '\n-----------------------------------------------------------------------\
                         \n[!] INFO: Cannot mount device "%s" (RT id = %d) to the rack.\
                         \n\tFloor returned from "get_hardware_size" function was: %s' % (name, dev_id, str(floor))
