@@ -580,9 +580,9 @@ class DB:
                 depth = 2
                 return floor, height, depth, mount
             else:
-                return 1, None, None, None
+                return None, None, None, None
         else:
-            return 1, None, None, None
+            return None, None, None, None
 
     @staticmethod
     def add_hardware(height, depth, name):
@@ -802,6 +802,8 @@ class DB:
                 floor, height, depth, mount = self.get_hardware_size(dev_id)
                 if floor is not None:
                     floor = int(floor) + 1
+                else:
+                    floor = 'auto'
                 if not hardware:
                     hardware = 'generic' + str(height) + 'U'
                 self.add_hardware(height, depth, hardware)
@@ -829,10 +831,10 @@ class DB:
                     if hardware:
                         device2rack.update({'hw_model': hardware[:48]})
                     device2rack.update({'rack_id': d42_rack_id})
-                    device2rack.update({'start_at': int(floor)})
+                    device2rack.update({'start_at': floor})
                     rest.post_device2rack(device2rack)
                 else:
-                    if not floor and dev_type != 1504:
+                    if floor == 'auto' and dev_type != 1504 and d42_rack_id is not None:
                         msg = '\n-----------------------------------------------------------------------\
                         \n[!] INFO: Cannot mount device "%s" (RT id = %d) to the rack.\
                         \n\tFloor returned from "get_hardware_size" function was: %s' % (name, dev_id, str(floor))
@@ -944,8 +946,11 @@ class DB:
                 if pdu_id not in rack_mounted:
                     rack_mounted.append(pdu_id)
                     floor, height, depth, mount = self.get_hardware_size(pdu_id)
-                    try:
+                    if floor is not None:
                         floor = int(floor) + 1
+                    else:
+                        floor = 'auto'
+                    try:
                         d42_rack_id = self.rack_id_map[rack_id]
                         if floor:
                             rdata = {}
