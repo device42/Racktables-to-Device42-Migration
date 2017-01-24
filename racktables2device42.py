@@ -580,9 +580,9 @@ class DB:
                 depth = 2
                 return floor, height, depth, mount
             else:
-                return None, None, None, None
+                return 1, None, None, None
         else:
-            return None, None, None, None
+            return 1, None, None, None
 
     @staticmethod
     def add_hardware(height, depth, name):
