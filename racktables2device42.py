@@ -696,7 +696,7 @@ class DB:
                             LEFT JOIN Rack ON RackSpace.rack_id = Rack.id
                             LEFT JOIN Location ON Rack.location_id = Location.id
                             WHERE Object.id = %s
-                            AND Object.objtype_id not in (2,9,1502,1505,1560,1561,1562,50275)""" % dev_id
+                            AND Object.objtype_id not in (2,9,1505,1560,1561,1562,50275)""" % dev_id
 
                 cur.execute(q)
                 data = cur.fetchall()
