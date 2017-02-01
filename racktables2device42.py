@@ -825,7 +825,7 @@ class DB:
                                 'label': item[1]
                             }
                             if self.get_links(item[3]):
-                                device_name = self.get_device_by_port(self.get_links(item[3])[1])
+                                device_name = self.get_device_by_port(self.get_links(item[3])[0])
                                 switchport_data.update({'device': device_name})
 
                             rest.post_switchport(switchport_data)
