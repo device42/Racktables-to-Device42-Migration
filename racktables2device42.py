@@ -814,16 +814,21 @@ class DB:
                     devicedata.update({'hardware': hardware[:48]})
                 rest.post_device(devicedata)
 
-                # update switchport
-                if dev_type == 8:
+                # update switchports
+                if dev_type == 8 or dev_type == 445 or dev_type == 1055:
                     ports = self.get_ports(dev_id)
                     if ports:
                         for item in self.get_ports(dev_id):
-                            rest.post_switchport({
+                            switchport_data = {
                                 'port': item[0],
                                 'switch': name,
                                 'label': item[1]
-                            })
+                            }
+                            if self.get_links(item[3]):
+                                device_name = self.get_device_by_port(self.get_links(item[3])[1])
+                                switchport_data.update({'device': device_name})
+
+                            rest.post_switchport(switchport_data)
 
                 # if there is a device, we can try to mount it to the rack
                 if dev_type != 1504 and d42_rack_id and floor:  # rack_id is D42 rack id
@@ -1071,7 +1076,8 @@ class DB:
             q = """SELECT
                     name,
                     label,
-                    PortOuterInterface.oif_name
+                    PortOuterInterface.oif_name,
+                    Port.id
                     FROM Port
                     LEFT JOIN PortOuterInterface ON PortOuterInterface.id = type
                     WHERE object_id = %s""" % device_id
@@ -1079,6 +1085,39 @@ class DB:
         data = cur.fetchall()
         if data:
             return data
+        else:
+            return False
+
+    def get_device_by_port(self, port_id):
+        if not self.con:
+            self.connect()
+        with self.con:
+            cur = self.con.cursor()
+            q = """SELECT
+                    name
+                    FROM Object
+                    WHERE id = ( SELECT object_id FROM Port WHERE id = %s )""" % port_id
+            cur.execute(q)
+        data = cur.fetchone()
+        if data:
+            return data[0]
+        else:
+            return False
+
+    def get_links(self, port_id):
+        if not self.con:
+            self.connect()
+        with self.con:
+            cur = self.con.cursor()
+            q = """SELECT
+                    porta,
+                    portb
+                    FROM Link
+                    WHERE portb = %s""" % port_id
+            cur.execute(q)
+        data = cur.fetchall()
+        if data:
+            return data[0]
         else:
             return False
 
