@@ -775,10 +775,10 @@ class DB:
             elif dev_type == 1502:
                 devicedata.update({'is_it_blade_host': 'yes'})
             elif dev_type == 4:
-                devicedata.update({'type': 'blade'})
                 try:
                     blade_host_id = self.container_map[dev_id]
                     blade_host_name = self.chassis[blade_host_id]
+                    devicedata.update({'type': 'blade'})
                     devicedata.update({'blade_host': blade_host_name})
                 except KeyError:
                     pass
