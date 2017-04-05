@@ -2,10 +2,13 @@
 that integrates centralized password management, impact charts and applications mappings with IT asset management.
 
 This repository contains sample script to take Inventory information from a RackTables installation and send it to Device42 appliance using the REST APIs.
+## Version
+-----------------------------
+    * 5.1
 
 ## Assumptions
 -----------------------------
-    * The script assumes that you are running RackTables  0.20.7 and above
+    * The script assumes that you are running RackTables 0.20.7 and above
     * This script works with Device42 10.5.0 and above
 
 ### Requirements

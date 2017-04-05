@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-__version__ = 5.0
+__version__ = 5.1
 
 """
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
@@ -39,6 +39,7 @@ conf = imp.load_source('conf', 'conf')
 
 class Logger:
     def __init__(self, logfile, stdout):
+        print '[!] Version %s' % __version__
         self.logfile = logfile
         self.stdout = stdout
         self.check_log_file()
