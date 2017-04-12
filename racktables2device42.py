@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-__version__ = 5.1
+__version__ = 5.11
 
 """
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
@@ -813,6 +813,11 @@ class DB:
             if devicedata:
                 if hardware and dev_type != 1504:
                     devicedata.update({'hardware': hardware[:48]})
+
+                # set default type for racked devices
+                if 'type' not in devicedata and d42_rack_id and floor:
+                    devicedata.update({'type': 'physical'})
+
                 rest.post_device(devicedata)
 
                 # update switchports
@@ -838,6 +843,7 @@ class DB:
                         device2rack.update({'hw_model': hardware[:48]})
                     device2rack.update({'rack_id': d42_rack_id})
                     device2rack.update({'start_at': floor})
+
                     rest.post_device2rack(device2rack)
                 else:
                     if dev_type != 1504 and d42_rack_id is not None:
