@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-__version__ = 5.11
+__version__ = 5.
 
 """
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
@@ -441,6 +441,8 @@ class DB:
 
             self.rack_id_map.update({rt_rack_id: d42_rack_id})
 
+        self.all_ports = self.get_ports()
+
     def get_hardware(self):
         """
         Get hardware from RT and send it to uploader
@@ -820,19 +822,35 @@ class DB:
 
                 rest.post_device(devicedata)
 
-                # update switchports
-                if dev_type == 8 or dev_type == 445 or dev_type == 1055:
-                    ports = self.get_ports(dev_id)
+                # add ports to blades
+                if dev_type == 4:
+                    ports = self.get_ports_by_device(self.all_ports, dev_id)
                     if ports:
-                        for item in self.get_ports(dev_id):
+                        for item in ports:
                             switchport_data = {
                                 'port': item[0],
                                 'switch': name,
                                 'label': item[1]
                             }
+
+                            rest.post_switchport(switchport_data)
+
+                # update switchports
+                if dev_type == 8 or dev_type == 445 or dev_type == 1055:
+                    ports = self.get_ports_by_device(self.all_ports, dev_id)
+                    if ports:
+                        for item in ports:
+                            switchport_data = {
+                                'port': item[0],
+                                'switch': name,
+                                'label': item[1]
+                            }
+
                             if self.get_links(item[3]):
                                 device_name = self.get_device_by_port(self.get_links(item[3])[0])
                                 switchport_data.update({'device': device_name})
+                                switchport_data.update({'remote_device': device_name})
+                                switchport_data.update({'remote_port': self.get_port_by_id(self.all_ports, self.get_links(item[3])[0])})
 
                             rest.post_switchport(switchport_data)
 
@@ -1038,7 +1056,7 @@ class DB:
             logger.debugger(msg)
 
         for item in data:
-            ports = self.get_ports(item[0])
+            ports = self.get_ports_by_device(self.all_ports, item[0])
             patch_type = 'singular'
             port_type = None
             if ports is not False:
@@ -1075,7 +1093,7 @@ class DB:
 
             rest.post_patch_panel(payload)
 
-    def get_ports(self, device_id):
+    def get_ports(self):
         if not self.con:
             self.connect()
         with self.con:
@@ -1084,16 +1102,32 @@ class DB:
                     name,
                     label,
                     PortOuterInterface.oif_name,
-                    Port.id
+                    Port.id,
+                    object_id
                     FROM Port
-                    LEFT JOIN PortOuterInterface ON PortOuterInterface.id = type
-                    WHERE object_id = %s""" % device_id
+                    LEFT JOIN PortOuterInterface ON PortOuterInterface.id = type"""
             cur.execute(q)
         data = cur.fetchall()
+
         if data:
             return data
         else:
             return False
+
+    @staticmethod
+    def get_ports_by_device(ports, device_id):
+        device_ports = []
+        for port in ports:
+            if port[4] == device_id:
+                device_ports.append(port)
+
+        return device_ports
+
+    @staticmethod
+    def get_port_by_id(ports, port_id):
+        for port in ports:
+            if port[3] == port_id:
+                return port[0]
 
     def get_device_by_port(self, port_id):
         if not self.con:
