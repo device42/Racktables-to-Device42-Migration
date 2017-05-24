@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-__version__ = 5.21
+__version__ = 5.22
 
 """
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
@@ -822,21 +822,8 @@ class DB:
 
                 rest.post_device(devicedata)
 
-                # add ports to blades
-                if dev_type == 4:
-                    ports = self.get_ports_by_device(self.all_ports, dev_id)
-                    if ports:
-                        for item in ports:
-                            switchport_data = {
-                                'port': item[0],
-                                'switch': name,
-                                'label': item[1]
-                            }
-
-                            rest.post_switchport(switchport_data)
-
-                # update switchports
-                if dev_type == 8 or dev_type == 445 or dev_type == 1055:
+                # update ports
+                if dev_type == 8 or dev_type == 4 or dev_type == 445 or dev_type == 1055:
                     ports = self.get_ports_by_device(self.all_ports, dev_id)
                     if ports:
                         for item in ports:
@@ -852,7 +839,22 @@ class DB:
                                 switchport_data.update({'remote_device': device_name})
                                 switchport_data.update({'remote_port': self.get_port_by_id(self.all_ports, self.get_links(item[3])[0])})
 
-                            rest.post_switchport(switchport_data)
+                                rest.post_switchport(switchport_data)
+
+                                # reverse connection
+                                device_name = self.get_device_by_port(self.get_links(item[3])[0])
+                                switchport_data = {
+                                    'port': self.get_port_by_id(self.all_ports, self.get_links(item[3])[0]),
+                                    'switch': device_name
+                                }
+
+                                switchport_data.update({'device': name})
+                                switchport_data.update({'remote_device': name})
+                                switchport_data.update({'remote_port': item[0]})
+
+                                rest.post_switchport(switchport_data)
+                            else:
+                                rest.post_switchport(switchport_data)
 
                 # if there is a device, we can try to mount it to the rack
                 if dev_type != 1504 and d42_rack_id and floor:  # rack_id is D42 rack id
