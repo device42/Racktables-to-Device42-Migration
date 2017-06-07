@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-__version__ = 5.22
+__version__ = 5.23
 
 """
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
@@ -1061,7 +1061,8 @@ class DB:
             ports = self.get_ports_by_device(self.all_ports, item[0])
             patch_type = 'singular'
             port_type = None
-            if ports is not False:
+
+            if isinstance(ports, list) and len(ports) > 0:
                 if len(ports) > 1:
                     types = []
 
