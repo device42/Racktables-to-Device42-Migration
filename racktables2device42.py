@@ -833,18 +833,19 @@ class DB:
                                 'label': item[1]
                             }
 
-                            if self.get_links(item[3]):
-                                device_name = self.get_device_by_port(self.get_links(item[3])[0])
+                            get_links = self.get_links(item[3])
+                            if get_links:
+                                device_name = self.get_device_by_port(get_links[0])
                                 switchport_data.update({'device': device_name})
                                 switchport_data.update({'remote_device': device_name})
-                                switchport_data.update({'remote_port': self.get_port_by_id(self.all_ports, self.get_links(item[3])[0])})
+                                switchport_data.update({'remote_port': self.get_port_by_id(self.all_ports, get_links[0])})
 
                                 rest.post_switchport(switchport_data)
 
                                 # reverse connection
-                                device_name = self.get_device_by_port(self.get_links(item[3])[0])
+                                device_name = self.get_device_by_port(get_links[0])
                                 switchport_data = {
-                                    'port': self.get_port_by_id(self.all_ports, self.get_links(item[3])[0]),
+                                    'port': self.get_port_by_id(self.all_ports, get_links[0]),
                                     'switch': device_name
                                 }
 
@@ -1160,10 +1161,24 @@ class DB:
                     WHERE portb = %s""" % port_id
             cur.execute(q)
         data = cur.fetchall()
+
         if data:
             return data[0]
         else:
-            return False
+            with self.con:
+                cur = self.con.cursor()
+                q = """SELECT
+                        portb,
+                        porta
+                        FROM Link
+                        WHERE porta = %s""" % port_id
+                cur.execute(q)
+            data = cur.fetchall()
+
+            if data:
+                return data[0]
+            else:
+                return False
 
     def get_rack_id_for_zero_us(self, pdu_id):
         if not self.con:
