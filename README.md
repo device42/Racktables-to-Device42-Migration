@@ -1,10 +1,10 @@
-[Device42](http://www.device42.com/) is a comprehensive data center inventory management and IP Address management software 
+[Device42](http://www.device42.com/) is a comprehensive data center inventory management and IP Address management software
 that integrates centralized password management, impact charts and applications mappings with IT asset management.
 
 This repository contains sample script to take Inventory information from a RackTables installation and send it to Device42 appliance using the REST APIs.
 ## Version
 -----------------------------
-    * 5.23
+    * 5.3
 
 ## Assumptions
 -----------------------------
@@ -20,7 +20,7 @@ This repository contains sample script to take Inventory information from a Rack
 
 ### Usage
 -----------------------------
-	
+
     * copy conf.sample to conf
     * in conf add D42 URL/credentials
 ```
@@ -39,7 +39,7 @@ DB_NAME = 'racktables database name'
 DB_USER = 'racktables user'
 DB_PWD = 'racktables password'
 ```
-	* adjust log settings 
+	* adjust log settings
 ```
 # ====== Log settings ==================== #
 LOGFILE = 'migration.log'
@@ -62,11 +62,11 @@ PDU_ORIENTATION = 'front'
 - PDU_MOUNT: Can be one of: 'left', 'right', 'above', 'below'. Used for Zero-U PDU migration. Default is 'left'.
 - PDU_ORIENTATION: Can be 'front' or  'back'. Used for Zero-U PDU migration. Default is 'front'.
 
-Run the script and enjoy! (```python racktables2device42.py```) 
+Run the script and enjoy! (```python racktables2device42.py```)
 If you have any questions - feel free to reach out to us at support at device42.com
 
 
-    
+
 ### Compatibility
 -----------------------------
     * Script runs on Linux and Windows
@@ -83,5 +83,3 @@ If you have any questions - feel free to reach out to us at support at device42.
 	    * Maximum Port type name length = 12
 	    * Maximum Hardware name length = 48
 	    * Maximum Pdu type name length = 64
-
-

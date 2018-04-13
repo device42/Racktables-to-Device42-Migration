@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-__version__ = 5.23
+__version__ = 5.3
 
 """
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
@@ -93,7 +93,10 @@ class REST:
             'Content-Type': 'application/x-www-form-urlencoded'
         }
 
-        r = requests.post(url, data=payload, headers=headers, verify=False)
+        if 'custom_fields' in url:
+            r = requests.put(url, data=payload, headers=headers, verify=False)
+        else:
+            r = requests.post(url, data=payload, headers=headers, verify=False)
         msg = unicode(payload)
         logger.writer(msg)
         msg = 'Status code: %s' % str(r.status_code)
@@ -200,7 +203,15 @@ class REST:
         url = self.base_url + '/api/1.0/switchports/'
         msg = '\r\nUploading switchports data to %s ' % url
         logger.writer(msg)
-        self.uploader(data, url)
+        response = self.uploader(data, url)
+        return response
+
+    def put_switchport_cf(self, data):
+        url = self.base_url + '/api/1.0/custom_fields/switchport/'
+        msg = '\r\nUploading switchports CF data to %s ' % url
+        logger.writer(msg)
+        response = self.uploader(data, url)
+        return response
 
     def post_patch_panel(self, data):
         url = self.base_url + '/api/1.0/patch_panel_models/'
@@ -839,8 +850,16 @@ class DB:
                                 switchport_data.update({'device': device_name})
                                 switchport_data.update({'remote_device': device_name})
                                 switchport_data.update({'remote_port': self.get_port_by_id(self.all_ports, get_links[0])})
+                                if item[6]:
+                                    switchport_data.update({'hwaddress': item[6]})
 
-                                rest.post_switchport(switchport_data)
+                                sp = rest.post_switchport(switchport_data)
+                                if item[5]:
+                                    rest.put_switchport_cf({
+                                        'id': sp['msg'][1],
+                                        'key': 'cable_id',
+                                        'value': item[5]
+                                    })
 
                                 # reverse connection
                                 device_name = self.get_device_by_port(get_links[0])
@@ -852,10 +871,29 @@ class DB:
                                 switchport_data.update({'device': name})
                                 switchport_data.update({'remote_device': name})
                                 switchport_data.update({'remote_port': item[0]})
+                                if item[6]:
+                                    switchport_data.update({'hwaddress': item[6]})
 
-                                rest.post_switchport(switchport_data)
+                                sp = rest.post_switchport(switchport_data)
+                                if item[5]:
+                                    rest.put_switchport_cf({
+                                        'id': sp['msg'][1],
+                                        'key': 'cable_id',
+                                        'value': item[5]
+                                    })
+
                             else:
-                                rest.post_switchport(switchport_data)
+                                if item[6]:
+                                    switchport_data.update({'hwaddress': item[6]})
+
+                                sp = rest.post_switchport(switchport_data)
+                                if item[5]:
+                                    rest.put_switchport_cf({
+                                        'id': sp['msg'][1],
+                                        'key': 'cable_id',
+                                        'value': item[5]
+                                    })
+
 
                 # if there is a device, we can try to mount it to the rack
                 if dev_type != 1504 and d42_rack_id and floor:  # rack_id is D42 rack id
@@ -1107,8 +1145,11 @@ class DB:
                     label,
                     PortOuterInterface.oif_name,
                     Port.id,
-                    object_id
+                    object_id,
+                    Link.cable,
+                    l2address
                     FROM Port
+                    LEFT JOIN Link ON Link.porta = Port.id
                     LEFT JOIN PortOuterInterface ON PortOuterInterface.id = type"""
             cur.execute(q)
         data = cur.fetchall()
@@ -1198,8 +1239,8 @@ class DB:
 
 def main():
     db = DB()
-    # db.get_subnets()
-    # db.get_ips()
+    db.get_subnets()
+    db.get_ips()
     db.get_infrastructure()
     db.get_hardware()
     db.get_container_map()
