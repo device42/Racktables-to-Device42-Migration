@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-__version__ = 5.31
+__version__ = 5.32
 
 """
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
@@ -834,7 +834,7 @@ class DB:
                 rest.post_device(devicedata)
 
                 # update ports
-                if dev_type == 8 or dev_type == 4 or dev_type == 445 or dev_type == 1055 or dev_type == 1644:
+                if dev_type in [8, 7, 4, 445, 1055, 1644]:
                     ports = self.get_ports_by_device(self.all_ports, dev_id)
                     if ports:
                         for item in ports:
