@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-__version__ = 5.32
+__version__ = 5.33
 
 """
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
@@ -236,7 +236,7 @@ class REST:
         msg = '\r\nFetching racks from %s ' % url
         logger.writer(msg)
         data = self.fetcher(url)
-        return data
+        return json.loads(data)
 
     def get_devices(self):
         url = self.base_url + '/api/1.0/devices/'
@@ -354,6 +354,7 @@ class DB:
         Get locations, rows and racks from RT, convert them to buildings and rooms and send to uploader.
         :return:
         """
+        self.d42_racks = {}
         buildings_map = {}
         rooms_map = {}
         rows_map = {}
@@ -379,6 +380,9 @@ class DB:
                     buildings_map.update({building_id: building_name})
                 else:
                     rooms_map.update({building_name: parent_name})
+        # get d42 racks
+        for d42_rack in rest.get_racks()['racks']:
+            self.d42_racks.update({d42_rack['name']: d42_rack['rack_id']})
 
         # upload buildings
         if conf.DEBUG:
@@ -413,6 +417,8 @@ class DB:
             # prepare rack data. We will upload it a little bit later
             rack = {}
             rack.update({'name': rack_name})
+            if rack_name in self.d42_racks.keys():
+                rack.update({'rack_id': self.d42_racks[rack_name]})
             rack.update({'size': height})
             rack.update({'rt_id': rack_id})  # we will remove this later
             if conf.ROW_AS_ROOM:
